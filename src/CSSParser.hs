@@ -68,7 +68,7 @@ stylesheet = do
 ruleset :: GenParser Char st RuleSet
 ruleset = do
   sels <- selectors
-  decs <- (braces lexer) $ declarations
+  decs <- braces lexer declarations
   return $ RuleSet sels decs
 
 selectors :: GenParser Char st [Selector]
@@ -85,7 +85,7 @@ selector :: GenParser Char st Selector
 selector = Selector <$> many1 simpleSelector
 
 simpleSelector :: GenParser Char st [SelectorTerm]
-simpleSelector = (lexeme lexer) $ choice [withElement, withoutElement]
+simpleSelector = lexeme lexer $ choice [withElement, withoutElement]
   where
     withElement = do
       el <- elementName
@@ -153,7 +153,7 @@ property = Property . map toLower <$> identifier lexer
 priority :: GenParser Char st Priority
 priority = do
   _ <- char '!'
-  Priority . map toLower <$> (identifier lexer)
+  Priority . map toLower <$> identifier lexer
 
 expr :: GenParser Char st [Term]
 expr = sepBy1 term (optional op)
@@ -161,7 +161,7 @@ expr = sepBy1 term (optional op)
 op :: GenParser Char st String
 op = comma lexer <|> forwardSlash
   where
-    forwardSlash = (lexeme lexer) $ do
+    forwardSlash = lexeme lexer $ do
       c <- char '/'
       return [c]
 
@@ -196,72 +196,72 @@ unit = choice
   ]
 
 percentage :: GenParser Char st Unit
-percentage = (lexeme lexer) $ do
+percentage = lexeme lexer $ do
   _ <- char '%'
   return Percentage
 
 centimeter :: GenParser Char st Unit
-centimeter = (lexeme lexer) $ do
+centimeter = lexeme lexer $ do
   _ <- stringIgnoreCase "cm"
   return Centimeter
 
 inch :: GenParser Char st Unit
-inch = (lexeme lexer) $ do
+inch = lexeme lexer $ do
   _ <- stringIgnoreCase "in"
   return Inch
 
 degree :: GenParser Char st Unit
-degree = (lexeme lexer) $ do
+degree = lexeme lexer $ do
   _ <- stringIgnoreCase "deg"
   return Degree
 
 radian :: GenParser Char st Unit
-radian = (lexeme lexer) $ do
+radian = lexeme lexer $ do
   _ <- stringIgnoreCase "rad"
   return Radian
 
 grad :: GenParser Char st Unit
-grad = (lexeme lexer) $ do
+grad = lexeme lexer $ do
   _ <- stringIgnoreCase "grad"
   return Grad
 
 second :: GenParser Char st Unit
-second = (lexeme lexer) $ do
+second = lexeme lexer $ do
   _ <- char 's'
   return Second
 
 hertz :: GenParser Char st Unit
-hertz = (lexeme lexer) $ do
+hertz = lexeme lexer $ do
   _ <- stringIgnoreCase "hz"
   return Hertz
 
 kilohertz :: GenParser Char st Unit
-kilohertz = (lexeme lexer) $ do
+kilohertz = lexeme lexer $ do
   _ <- stringIgnoreCase "khz"
   return Kilohertz
 
 pixel :: GenParser Char st Unit
-pixel = (lexeme lexer) $ do
+pixel = lexeme lexer $ do
   _ <- stringIgnoreCase "px"
   return Pixel
 
 point :: GenParser Char st Unit
-point = (lexeme lexer) $ do
+point = lexeme lexer $ do
   _ <- stringIgnoreCase "pt"
   return Point
 
 pica :: GenParser Char st Unit
-pica = (lexeme lexer) $ do
+pica = lexeme lexer $ do
   _ <- stringIgnoreCase "pc"
   return Pica
 
 millimeter :: GenParser Char st Unit
-millimeter = (lexeme lexer) $ do
+millimeter = lexeme lexer $ do
   _ <- stringIgnoreCase "mm"
   return Millimeter
 
 millisecond :: GenParser Char st Unit
-millisecond = (lexeme lexer) $ do
+millisecond = lexeme lexer $ do
   _ <- stringIgnoreCase "ms"
   return Millisecond
 
@@ -270,16 +270,16 @@ stringTerm = StringTerm <$> quotedString
 
 identTerm :: GenParser Char st Term
 identTerm = do
-  s <- (identifier lexer)
+  s <- identifier lexer
   return . IdentTerm $ map toLower s
 
 uri :: GenParser Char st Term
 uri = URI <$> do
   _ <- stringIgnoreCase "url"
-  (parens lexer) url
+  parens lexer url
   where
     url = quotedString <|> unquotedString
-    unquotedString = (lexeme lexer) $ manyTill anyChar ending
+    unquotedString = lexeme lexer $ manyTill anyChar ending
     ending = lookAhead $ do
       (whiteSpace lexer)
       char ')'
@@ -296,7 +296,7 @@ charIgnoreCase c =
   char (toUpper c) <|> char (toLower c)
 
 quotedString :: GenParser Char st String
-quotedString = (lexeme lexer) $ singleQuoted <|> doubleQuoted
+quotedString = lexeme lexer $ singleQuoted <|> doubleQuoted
   where
     singleQuoted =
       between (char '\'') (char '\'') (many1 $ noneOf "\n\r\f\\\'")
@@ -304,7 +304,7 @@ quotedString = (lexeme lexer) $ singleQuoted <|> doubleQuoted
       between (char '"') (char '"') (many1 $ noneOf "\n\r\f\\\"")
 
 hexcolor :: GenParser Char st Term
-hexcolor = (lexeme lexer) $ do
+hexcolor = lexeme lexer $ do
   _ <- char '#'
   try hexcolor6digits <|> hexcolor3digits
 
@@ -348,8 +348,8 @@ hexdigit = toInt . toLower <$> hexDigit
 
 functionTerm :: GenParser Char st Term
 functionTerm = do
-  f <- map toLower <$> (identifier lexer)
-  args <- (parens lexer) $ expr
+  f <- map toLower <$> identifier lexer
+  args <- parens lexer expr
   return $ FunctionTerm f args
 
 num :: GenParser Char st Double
@@ -376,6 +376,7 @@ num = do
 lexer :: GenTokenParser String st Identity
 lexer = makeTokenParser cssDef
 
+cssDef :: GenLanguageDef String u Identity
 cssDef =
   emptyDef
     { commentStart = "/*"

@@ -13,34 +13,37 @@ import Text.Parsec.Language
 import Text.Parsec.Token
 
 data RuleSet = RuleSet [Selector] [Declaration]
-  deriving Show
+  deriving (Eq, Read, Show)
 
 data Selector = Selector [[SelectorTerm]]
-  deriving Show
+  deriving (Eq, Read, Show)
 
 data SelectorTerm = NamedElement String
                     | WildcardElement
                     | Id String
                     | Class String
                     | Pseudo String
-  deriving Show
+  deriving (Eq, Read, Show)
 
 data Declaration = Declaration Property [Term] (Maybe Priority)
-  deriving Show
+  deriving (Eq, Read, Show)
 
-data Property = Property String
-  deriving Show
+data Property = Property String (Maybe Hack)
+  deriving (Eq, Read, Show)
+
+data Hack = Hack Char
+  deriving (Eq, Read, Show)
 
 data Priority = Priority String
-  deriving Show
+  deriving (Eq, Read, Show)
 
-data Term =   NumberTerm Double (Maybe Unit)
+data Term =   NumericTerm Double (Maybe Unit)
             | StringTerm String
             | IdentTerm String
             | URI String
             | RGBColor Integer Integer Integer
             | FunctionTerm String [Term]
-  deriving Show
+  deriving (Eq, Read, Show)
 
 data Unit = Percentage
           | Pixel
@@ -58,7 +61,7 @@ data Unit = Percentage
           | Second
           | Hertz
           | Kilohertz
-  deriving Show
+  deriving (Eq, Read, Show)
 
 stylesheet :: GenParser Char st [RuleSet]
 stylesheet = do
@@ -148,7 +151,18 @@ declaration = do
   return $ Declaration prop terms mprior
 
 property :: GenParser Char st Property
-property = Property . map toLower <$> identifier lexer
+property = hackedProperty <|> unhackedProperty
+
+unhackedProperty :: GenParser Char st Property
+unhackedProperty = do
+  prop <- map toLower <$> identifier lexer
+  return $ Property prop Nothing
+
+hackedProperty :: GenParser Char st Property
+hackedProperty = do
+  hack <- Hack <$> oneOf "#_*"
+  prop <- map toLower <$> identifier lexer
+  return $ Property prop (Just hack)
 
 priority :: GenParser Char st Priority
 priority = do
@@ -175,10 +189,10 @@ term = choice
   , hexcolor ]
 
 numericTerm :: GenParser Char st Term
-numericTerm = do
+numericTerm = (do
   n <- num
   munit <- optionMaybe unit
-  return $ NumberTerm n munit
+  return $ NumericTerm n munit) <?> "numeric term"
 
 unit :: GenParser Char st Unit
 unit = choice
@@ -227,7 +241,7 @@ grad = lexeme lexer $ do
 
 second :: GenParser Char st Unit
 second = lexeme lexer $ do
-  _ <- char 's'
+  _ <- charIgnoreCase 's'
   return Second
 
 hertz :: GenParser Char st Unit
@@ -274,12 +288,12 @@ identTerm = do
   return . IdentTerm $ map toLower s
 
 uri :: GenParser Char st Term
-uri = URI <$> do
+uri = (URI <$> do
   _ <- stringIgnoreCase "url"
-  parens lexer url
+  parens lexer url) <?> "uri"
   where
     url = quotedString <|> unquotedString
-    unquotedString = lexeme lexer $ manyTill anyChar ending
+    unquotedString = (lexeme lexer $ manyTill anyChar ending) <?> "unquoted string"
     ending = lookAhead $ do
       (whiteSpace lexer)
       char ')'
@@ -296,17 +310,17 @@ charIgnoreCase c =
   char (toUpper c) <|> char (toLower c)
 
 quotedString :: GenParser Char st String
-quotedString = lexeme lexer $ singleQuoted <|> doubleQuoted
+quotedString = (lexeme lexer $ singleQuoted <|> doubleQuoted) <?> "quoted string"
   where
     singleQuoted =
-      between (char '\'') (char '\'') (many1 $ noneOf "\n\r\f\\\'")
+      between (char '\'') (char '\'') (many $ noneOf "\n\r\f\\\'")
     doubleQuoted =
-      between (char '"') (char '"') (many1 $ noneOf "\n\r\f\\\"")
+      between (char '"') (char '"') (many $ noneOf "\n\r\f\\\"")
 
 hexcolor :: GenParser Char st Term
-hexcolor = lexeme lexer $ do
+hexcolor = (lexeme lexer $ do
   _ <- char '#'
-  try hexcolor6digits <|> hexcolor3digits
+  try hexcolor6digits <|> hexcolor3digits) <?> "hexcolor"
 
 hexcolor3digits :: GenParser Char st Term
 hexcolor3digits = do
@@ -314,7 +328,7 @@ hexcolor3digits = do
   return $ RGBColor r g b
   where
     base16 :: Integer -> Integer
-    base16 x = x * 16 + 15
+    base16 x = x * 16 + x
 
 hexcolor6digits :: GenParser Char st Term
 hexcolor6digits = do
@@ -353,25 +367,26 @@ functionTerm = do
   return $ FunctionTerm f args
 
 num :: GenParser Char st Double
-num = do
-  c <- option '+' (char '-' <|> char '+')
-  let power = if c == '-' then (-1) else 1
-  (*) power <$> (try asDecimal <|> asWhole)
+num = (lexeme lexer $ do
+  power <- sign
+  (*) power <$> (try decimalNum <|> wholeNum)) <?> "number"
   where
-    asWhole = do
+    sign :: GenParser Char st Double
+    sign = do
+      c <- option '+' (char '-' <|> char '+')
+      return $ if c == '-' then (-1) else 1
+    wholeNum = do
       s <- many1 digit
       returnNumberOrError s
-    asDecimal = do
-      s1 <- many digit
+    decimalNum = do
+      s1 <- option "0" (many1 digit)
       _ <- char '.'
       s2 <- many1 digit
       returnNumberOrError $ s1 ++ "." ++ s2
     returnNumberOrError s =
-      case maybeRead s of
+      case fmap fst . listToMaybe $ reads s of
         Just r -> return r
-        Nothing -> error $ "Unable to parse as number: " ++ s
-    maybeRead :: Read a => String -> Maybe a
-    maybeRead = fmap fst . listToMaybe . reads
+        Nothing -> fail $ "Unable to parse as number: " ++ s
 
 lexer :: GenTokenParser String st Identity
 lexer = makeTokenParser cssDef
@@ -383,7 +398,7 @@ cssDef =
     , commentEnd = "*/"
     , commentLine = ""
     , nestedComments = False
-    , identStart = letter <|> char '_'
+    , identStart = letter <|> oneOf "_-"
     , identLetter = alphaNum <|> oneOf "_-"
     , caseSensitive = False
     }

@@ -69,10 +69,10 @@ stylesheet = do
   many ruleset
 
 ruleset :: GenParser Char st RuleSet
-ruleset = do
+ruleset = (do
   sels <- selectors
   decs <- braces lexer declarations
-  return $ RuleSet sels decs
+  return $ RuleSet sels decs) <?> "ruleset"
 
 selectors :: GenParser Char st [Selector]
 selectors = do
@@ -85,19 +85,19 @@ selectors = do
     Nothing -> return [s]
 
 selector :: GenParser Char st Selector
-selector = Selector <$> many1 simpleSelector
+selector = (Selector <$> many1 simpleSelector) <?> "selector"
 
 simpleSelector :: GenParser Char st [SelectorTerm]
 simpleSelector = lexeme lexer $ choice [withElement, withoutElement]
   where
     withElement = do
       el <- elementName
-      rest <- many $ choice [identity, clazz, pseudo]
+      rest <- many $ choice [identity, clazz, pseudoElement]
       return $ el : rest
-    withoutElement = many1 $ choice [identity, clazz, pseudo]
+    withoutElement = many1 $ choice [identity, clazz, pseudoElement]
 
 elementName :: GenParser Char st SelectorTerm
-elementName = choice [named, wildcard]
+elementName = (choice [named, wildcard]) <?> "element-name"
   where
     named = do
       s <- map toLower <$> unlexemedIdentifier
@@ -107,28 +107,28 @@ elementName = choice [named, wildcard]
       return WildcardElement
 
 identity :: GenParser Char st SelectorTerm
-identity = do
+identity = (do
   _ <- char '#'
   s <- many1 $ choice [oneOf "_-", alphaNum]
-  return $ Id s
+  return $ Id s) <?> "#id"
 
 clazz :: GenParser Char st SelectorTerm
-clazz = do
+clazz = (do
   _ <- char '.'
   s <- unlexemedIdentifier
-  return $ Class s
+  return $ Class s) <?> ".class"
 
-pseudo :: GenParser Char st SelectorTerm
-pseudo = do
+pseudoElement :: GenParser Char st SelectorTerm
+pseudoElement = (do
   _ <- char ':'
   s <- map toLower <$> unlexemedIdentifier
-  return $ Pseudo s
+  return $ Pseudo s) <?> ":pseudo-element"
 
 unlexemedIdentifier :: GenParser Char st String
-unlexemedIdentifier = do
+unlexemedIdentifier = (do
   start <- identStart cssDef
   rest <- many $ identLetter cssDef
-  return $ start : rest
+  return $ start : rest) <?> "identifier"
 
 declarations :: GenParser Char st [Declaration]
 declarations = do
@@ -143,15 +143,15 @@ declarations = do
     (Nothing, Nothing) -> return []
 
 declaration :: GenParser Char st Declaration
-declaration = do
+declaration = (do
   prop <- property
   _ <- (colon lexer)
   terms <- expr
   mprior <- optionMaybe priority
-  return $ Declaration prop terms mprior
+  return $ Declaration prop terms mprior) <?> "declaration"
 
 property :: GenParser Char st Property
-property = hackedProperty <|> unhackedProperty
+property = (hackedProperty <|> unhackedProperty) <?> "property"
 
 unhackedProperty :: GenParser Char st Property
 unhackedProperty = do
@@ -165,15 +165,15 @@ hackedProperty = do
   return $ Property prop (Just hack)
 
 priority :: GenParser Char st Priority
-priority = do
-  _ <- char '!'
-  Priority . map toLower <$> identifier lexer
+priority = (do
+  _ <- lexeme lexer $ char '!'
+  Priority . map toLower <$> identifier lexer) <?> "priority"
 
 expr :: GenParser Char st [Term]
-expr = sepBy1 term (optional op)
+expr = sepBy term (optional termSeparator)
 
-op :: GenParser Char st String
-op = comma lexer <|> forwardSlash
+termSeparator :: GenParser Char st String
+termSeparator = (comma lexer <|> forwardSlash) <?> "term separator"
   where
     forwardSlash = lexeme lexer $ do
       c <- char '/'
@@ -205,6 +205,7 @@ unit = choice
   , second
   , hertz
   , kilohertz
+  , try ems <|> exs
   , try pixel <|> (try point <|> pica)
   , try millimeter <|> millisecond
   ]
@@ -253,6 +254,16 @@ kilohertz :: GenParser Char st Unit
 kilohertz = lexeme lexer $ do
   _ <- stringIgnoreCase "khz"
   return Kilohertz
+
+ems :: GenParser Char st Unit
+ems = lexeme lexer $ do
+  _ <- stringIgnoreCase "em"
+  return Ems
+
+exs :: GenParser Char st Unit
+exs = lexeme lexer $ do
+  _ <- stringIgnoreCase "ex"
+  return Exs
 
 pixel :: GenParser Char st Unit
 pixel = lexeme lexer $ do

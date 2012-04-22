@@ -4,7 +4,6 @@
     It tries not to be too strict, and it doesn't understand CSS3.
 
     missing stuff:  > and + selector operators
-                    [attr] stuff in selectors
                     correct char handling (escape & non-ascii chars)
                     stuff that can go at the top of your stylesheet
 -}

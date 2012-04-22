@@ -1,6 +1,12 @@
 {- |
     An incomplete css parser which pretty much follows this
-    http://www.w3.org/TR/CSS21/grammar.html
+    http://www.w3.org/TR/CSS21/grammar.html.
+    It tries not to be too strict, and it doesn't understand CSS3.
+
+    missing stuff:  > and + selector operators
+                    [attr] stuff in selectors
+                    correct char handling (escape & non-ascii chars)
+                    stuff that can go at the top of your stylesheet
 -}
 module CSSParser where
 
@@ -23,6 +29,12 @@ data SelectorTerm = NamedElement String
                     | Id String
                     | Class String
                     | Pseudo String
+                    | Attribute String (Maybe Match)
+  deriving (Eq, Read, Show)
+
+data Match =   EqualMatch String
+             | IncludesMatch String
+             | DashMatch String
   deriving (Eq, Read, Show)
 
 data Declaration = Declaration Property [Term] (Maybe Priority)
@@ -42,6 +54,7 @@ data Term =   NumericTerm Double (Maybe Unit)
             | IdentTerm String
             | URI String
             | RGBColor Integer Integer Integer
+            | OpacityHack Double
             | FunctionTerm String [Term]
   deriving (Eq, Read, Show)
 
@@ -92,9 +105,9 @@ simpleSelector = lexeme lexer $ choice [withElement, withoutElement]
   where
     withElement = do
       el <- elementName
-      rest <- many $ choice [identity, clazz, pseudoElement]
+      rest <- many $ choice [identity, clazz, pseudoElement, attribute]
       return $ el : rest
-    withoutElement = many1 $ choice [identity, clazz, pseudoElement]
+    withoutElement = many1 $ choice [identity, clazz, pseudoElement, attribute]
 
 elementName :: GenParser Char st SelectorTerm
 elementName = (choice [named, wildcard]) <?> "element-name"
@@ -105,6 +118,26 @@ elementName = (choice [named, wildcard]) <?> "element-name"
     wildcard = do
       _c <- char '*'
       return WildcardElement
+
+attribute :: GenParser Char st SelectorTerm
+attribute = (brackets lexer $ do
+  attName <- identifier lexer
+  mmatch <- optionMaybe match
+  return $ Attribute attName mmatch) <?> "[attribute]"
+  where
+    match = (equalMatch <|> includesMatch <|> dashMatch) <?> "att val"
+    equalMatch = do
+      _ <- lexeme lexer $ char '='
+      val <- identifier lexer <|> quotedString
+      return $ EqualMatch val
+    includesMatch = do
+      _ <- lexeme lexer $ string "~="
+      val <- identifier lexer <|> quotedString
+      return $ IncludesMatch val
+    dashMatch = do
+      _ <- lexeme lexer $ string "|="
+      val <- identifier lexer <|> quotedString
+      return $ DashMatch val
 
 identity :: GenParser Char st SelectorTerm
 identity = (do
@@ -183,7 +216,8 @@ term :: GenParser Char st Term
 term = choice
   [ numericTerm
   , stringTerm
-  , try uri <|> (try functionTerm <|> identTerm)
+  , try uri <|> (try opacityHack <|> (try functionTerm <|> identTerm))
+  , try opacityHack <|> (try functionTerm <|> identTerm)
   , try functionTerm <|> identTerm
   , identTerm
   , hexcolor ]
@@ -308,6 +342,16 @@ uri = (URI <$> do
     ending = lookAhead $ do
       (whiteSpace lexer)
       char ')'
+
+opacityHack :: GenParser Char st Term
+opacityHack = (OpacityHack <$> do
+  _ <- stringIgnoreCase "alpha"
+  parens lexer opacity) <?> ""
+  where
+    opacity = do
+      _ <- lexeme lexer $ stringIgnoreCase "opacity"
+      _ <- lexeme lexer $ char '='
+      num
 
 stringIgnoreCase :: String -> GenParser Char st String
 stringIgnoreCase [] = return ""

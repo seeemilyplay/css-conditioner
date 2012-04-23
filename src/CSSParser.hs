@@ -3,9 +3,9 @@
     http://www.w3.org/TR/CSS21/grammar.html.
     It tries not to be too strict, and it doesn't understand CSS3.
 
-    missing stuff:  > and + selector operators
-                    correct char handling (escape & non-ascii chars)
+    missing stuff:  correct char handling (escape & non-ascii chars)
                     stuff that can go at the top of your stylesheet
+                    @font-face stuff (not in spec but hey)
 -}
 module CSSParser where
 
@@ -13,14 +13,29 @@ import Control.Applicative ((<$>))
 import Data.Char
 import Data.Functor.Identity
 import Data.Maybe (listToMaybe)
-import Text.ParserCombinators.Parsec
+import Text.Parsec
 import Text.Parsec.Language
+import Text.Parsec.String
 import Text.Parsec.Token
+
+data Stylesheet = Stylesheet (Maybe CharSet) [RuleSet]
+  deriving (Eq, Read, Show)
+
+data CharSet = CharSet String
+  deriving (Eq, Read, Show)
+
+data Media = Media [String] [RuleSet]
+  deriving (Eq, Read, Show)
 
 data RuleSet = RuleSet [Selector] [Declaration]
   deriving (Eq, Read, Show)
 
-data Selector = Selector [[SelectorTerm]]
+data Selector = Selector [SelectorPart]
+  deriving (Eq, Read, Show)
+
+data SelectorPart =  NearestChildSelector [SelectorTerm]
+                   | PlusSelector [SelectorTerm]
+                   | SimpleSelector [SelectorTerm]
   deriving (Eq, Read, Show)
 
 data SelectorTerm = NamedElement String
@@ -28,21 +43,21 @@ data SelectorTerm = NamedElement String
                     | Id String
                     | Class String
                     | Pseudo String
-                    | Attribute String (Maybe Match)
+                    | Attribute String (Maybe AttributeMatch)
   deriving (Eq, Read, Show)
 
-data Match =   EqualMatch String
-             | IncludesMatch String
-             | DashMatch String
+data AttributeMatch =   EqualMatch String
+                      | IncludesMatch String
+                      | DashMatch String
   deriving (Eq, Read, Show)
 
 data Declaration = Declaration Property [Term] (Maybe Priority)
   deriving (Eq, Read, Show)
 
-data Property = Property String (Maybe Hack)
+data Property = Property String (Maybe PropertyHack)
   deriving (Eq, Read, Show)
 
-data Hack = Hack Char
+data PropertyHack = PropertyHack Char
   deriving (Eq, Read, Show)
 
 data Priority = Priority String
@@ -75,16 +90,37 @@ data Unit = Percentage
           | Kilohertz
   deriving (Eq, Read, Show)
 
-stylesheet :: GenParser Char st [RuleSet]
+stylesheet :: GenParser Char st Stylesheet
 stylesheet = do
   (whiteSpace lexer)
-  many ruleset
+  mcharset <- optionMaybe charset
+  rulesets <- many ruleset
+  _ <- eof
+  return $ Stylesheet mcharset rulesets
+
+charset :: GenParser Char st CharSet
+charset = (do
+  _ <- lexeme lexer $ stringIgnoreCase "@charset "
+  cs <- map toLower <$> quotedString
+  _ <- semi lexer
+  return $ CharSet cs) <?> "@charset"
+
+media :: GenParser Char set Media
+media = (do
+  _ <- lexeme lexer $ stringIgnoreCase "@media "
+  m <- map toLower <$> identifier lexer
+  ms <- many (do
+    _ <- comma lexer
+    map toLower <$> identifier lexer)
+  rs <- braces lexer $ many ruleset
+  return $ Media (m:ms) rs
+  ) <?> "@media"
 
 ruleset :: GenParser Char st RuleSet
 ruleset = (do
   sels <- selectors
   decs <- braces lexer declarations
-  return $ RuleSet sels decs) <?> "ruleset"
+  return $ RuleSet sels decs) <?> "rule set"
 
 selectors :: GenParser Char st [Selector]
 selectors = do
@@ -97,10 +133,29 @@ selectors = do
     Nothing -> return [s]
 
 selector :: GenParser Char st Selector
-selector = (Selector <$> many1 simpleSelector) <?> "selector"
+selector = (Selector <$> do
+  s <- simpleSelector
+  ss <- many selectorPart
+  return $ s : ss) <?> "selector"
 
-simpleSelector :: GenParser Char st [SelectorTerm]
-simpleSelector = lexeme lexer $ choice [withElement, withoutElement]
+selectorPart :: GenParser Char st SelectorPart
+selectorPart = nearestChildSelector <|> plusSelector <|> simpleSelector
+
+nearestChildSelector :: GenParser Char st SelectorPart
+nearestChildSelector = (do
+  _ <- lexeme lexer $ char '>'
+  NearestChildSelector <$> selectorTerms) <?> ""
+
+plusSelector :: GenParser Char st SelectorPart
+plusSelector = (do
+  _ <- lexeme lexer $ char '+'
+  PlusSelector <$> selectorTerms) <?> ""
+
+simpleSelector :: GenParser Char st SelectorPart
+simpleSelector = SimpleSelector <$> selectorTerms
+
+selectorTerms :: GenParser Char st [SelectorTerm]
+selectorTerms = lexeme lexer $ choice [withElement, withoutElement]
   where
     withElement = do
       el <- elementName
@@ -109,7 +164,7 @@ simpleSelector = lexeme lexer $ choice [withElement, withoutElement]
     withoutElement = many1 $ choice [identity, clazz, pseudoElement, attribute]
 
 elementName :: GenParser Char st SelectorTerm
-elementName = (choice [named, wildcard]) <?> "element-name"
+elementName = (named <|> wildcard) <?> "element-name"
   where
     named = do
       s <- map toLower <$> unlexemedIdentifier
@@ -119,7 +174,7 @@ elementName = (choice [named, wildcard]) <?> "element-name"
       return WildcardElement
 
 attribute :: GenParser Char st SelectorTerm
-attribute = (brackets lexer $ do
+attribute = brackets lexer (do
   attName <- identifier lexer
   mmatch <- optionMaybe match
   return $ Attribute attName mmatch) <?> "[attribute]"
@@ -192,7 +247,7 @@ unhackedProperty = do
 
 hackedProperty :: GenParser Char st Property
 hackedProperty = do
-  hack <- Hack <$> oneOf "#_*"
+  hack <- PropertyHack <$> oneOf "#_*"
   prop <- map toLower <$> identifier lexer
   return $ Property prop (Just hack)
 
@@ -337,7 +392,7 @@ uri = (URI <$> do
   parens lexer url) <?> "uri"
   where
     url = quotedString <|> unquotedString
-    unquotedString = (lexeme lexer $ manyTill anyChar ending) <?> "unquoted string"
+    unquotedString = lexeme lexer (manyTill anyChar ending) <?> "unquoted string"
     ending = lookAhead $ do
       (whiteSpace lexer)
       char ')'
@@ -364,7 +419,7 @@ charIgnoreCase c =
   char (toUpper c) <|> char (toLower c)
 
 quotedString :: GenParser Char st String
-quotedString = (lexeme lexer $ singleQuoted <|> doubleQuoted) <?> "quoted string"
+quotedString = lexeme lexer (singleQuoted <|> doubleQuoted) <?> "quoted string"
   where
     singleQuoted =
       between (char '\'') (char '\'') (many $ noneOf "\n\r\f\\\'")
@@ -372,9 +427,13 @@ quotedString = (lexeme lexer $ singleQuoted <|> doubleQuoted) <?> "quoted string
       between (char '"') (char '"') (many $ noneOf "\n\r\f\\\"")
 
 hexcolor :: GenParser Char st Term
-hexcolor = (lexeme lexer $ do
+hexcolor = lexeme lexer (do
   _ <- char '#'
-  try hexcolor6digits <|> hexcolor3digits) <?> "hexcolor"
+  col <- try hexcolor6digits <|> hexcolor3digits
+  mdig <- lookAhead $ optionMaybe hexdigit
+  case mdig of
+    Just _ -> fail "3 or 6 digits in hexcolor"
+    Nothing -> return col) <?> "hexcolor"
 
 hexcolor3digits :: GenParser Char st Term
 hexcolor3digits = do
@@ -415,13 +474,13 @@ hexdigit = toInt . toLower <$> hexDigit
     toInt c = error $ "Internal parser error, expected valid hex char got " ++ [c]
 
 functionTerm :: GenParser Char st Term
-functionTerm = do
+functionTerm = (do
   f <- map toLower <$> identifier lexer
   args <- parens lexer expr
-  return $ FunctionTerm f args
+  return $ FunctionTerm f args) <?> "function"
 
 num :: GenParser Char st Double
-num = (lexeme lexer $ do
+num = lexeme lexer (do
   power <- sign
   (*) power <$> (try decimalNum <|> wholeNum)) <?> "number"
   where
@@ -457,8 +516,8 @@ cssDef =
     , caseSensitive = False
     }
 
-tryout :: FilePath -> IO ()
-tryout file = do
+parseFile :: FilePath -> IO ()
+parseFile file = do
   csscontents <- readFile file
   let css = parse stylesheet file csscontents
   print css

@@ -12,6 +12,6 @@ library
   build-depends: QuickCheck >= 1.1 && < 2
   build-depends: test-framework-hunit >= 0.2.0
   build-depends: HUnit >= 1.2 && < 2
-  hs-source-dirs: src
+  hs-source-dirs: src src/test
   ghc-options: -fwarn-tabs -fwarn-unused-do-bind -fwarn-incomplete-record-updates -Wall -Werror
-  exposed-modules: CSSParser
+  exposed-modules: CSSParser CSSParserTest

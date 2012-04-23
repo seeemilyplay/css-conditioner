@@ -1,36 +1,72 @@
-module Test.CSSParserTest where
+module CSSParserTest where
 
-import Test.Framework (defaultMain)
+import Test.Framework (defaultMain, Test)
 import Test.Framework.Providers.HUnit (testCase)
 import Test.HUnit (assertFailure, assertEqual, assertBool, Assertion)
-import Text.ParserCombinators.Parsec
+import Text.Parsec
 import Text.Parsec.Error
 import Text.Parsec.Token
 
+
 import CSSParser
 
-main = defaultMain tests
+runTests :: IO ()
+runTests = defaultMain tests
 
+tests :: [Test]
 tests =
   [ testCase "stylesheet valid" $ forAllCases assertParsesAs stylesheet
-      [ ("", [])
+      [ ("", Stylesheet Nothing [])
       , ("/*hey lovelies*/ a {} b {}",
-         [ RuleSet [Selector [[NamedElement "a"]]] []
-         , RuleSet [Selector [[NamedElement "b"]]] []
-         ])
+         Stylesheet Nothing
+                    [ RuleSet [Selector [SimpleSelector [NamedElement "a"]]] []
+                    , RuleSet [Selector [SimpleSelector [NamedElement "b"]]] []
+                    ])
+      , ("@charset 'utf-8'; a {} b {}",
+         Stylesheet (Just $ CharSet "utf-8")
+                    [ RuleSet [Selector [SimpleSelector [NamedElement "a"]]] []
+                    , RuleSet [Selector [SimpleSelector [NamedElement "b"]]] []
+                    ])
       ]
   , testCase "stylesheet invalid" $ forAllCases assertCantParseAs stylesheet
       [ ("a", [])
+      , ("@", [])
+      ]
+  , testCase "charset valid" $ forAllCases assertParsesAs charset
+      [ ("@charset \"UTF-8\";", CharSet "utf-8")
+      , ("@charset 'utf-8';", CharSet "utf-8")
+      , ("@CHARSET    \"utf-8\";", CharSet "utf-8")
+      ]
+  , testCase "charset invalid" $ forAllCases assertCantParseAs charset
+      [ ("@charset utf-9;", [])
+      , ("charset 'utf-8';", [])
+      , ("@charset 'utf-8'", [])
+      ]
+  , testCase "media valid" $ forAllCases assertParsesAs media
+      [ ("@MEDIA SCREEN, PRINT { p.test {font-weight:bold;} }",
+          Media ["screen", "print"]
+                [RuleSet [Selector [SimpleSelector [NamedElement "p", Class "test"]]]
+                         [Declaration (Property "font-weight" Nothing)
+                                      [IdentTerm "bold"]
+                                      Nothing]
+                ])
+      , ("@media screen { }",
+          Media ["screen"]
+                [])
+      ]
+  , testCase "media invalid" $ forAllCases assertCantParseAs media
+      [ ("@media screen", [])
+      , ("media screen", [Expect "@media"])
       ]
   , testCase "ruleset valid" $ forAllCases assertParsesAs ruleset
       [ (".account-body h2, .tab-viewer .account-body h2 " ++
          "{ color: #000; font: 14px/24px \"Helvetica Neue\";}",
-         RuleSet [ Selector [ [Class "account-body"]
-                            , [NamedElement "h2"]
+         RuleSet [ Selector [ SimpleSelector [Class "account-body"]
+                            , SimpleSelector [NamedElement "h2"]
                             ]
-                 , Selector [ [Class "tab-viewer"]
-                            , [Class "account-body"]
-                            , [NamedElement "h2"]
+                 , Selector [ SimpleSelector [Class "tab-viewer"]
+                            , SimpleSelector [Class "account-body"]
+                            , SimpleSelector [NamedElement "h2"]
                             ]
                  ]
                  [ Declaration (Property "color" Nothing)
@@ -50,16 +86,16 @@ tests =
       ]
   , testCase "selectors valid" $ forAllCases assertParsesAs selectors
       [ ("html, body,div",
-         [ Selector [ [NamedElement "html"] ]
-         , Selector [ [NamedElement "body"] ]
-         , Selector [ [NamedElement "div"] ]
+         [ Selector [ SimpleSelector [NamedElement "html"] ]
+         , Selector [ SimpleSelector [NamedElement "body"] ]
+         , Selector [ SimpleSelector [NamedElement "div"] ]
          ])
       , (".login-container .body, *.Txt-Link TD.body:hover, a.txt-link",
-         [ Selector [ [Class "login-container"]
-                    , [Class "body"] ]
-         , Selector [ [WildcardElement, Class "Txt-Link"]
-                    , [NamedElement "td", Class "body", Pseudo "hover"] ]
-         , Selector [ [NamedElement "a", Class "txt-link"] ]
+         [ Selector [ SimpleSelector [Class "login-container"]
+                    , SimpleSelector [Class "body"] ]
+         , Selector [ SimpleSelector [WildcardElement, Class "Txt-Link"]
+                    , SimpleSelector [NamedElement "td", Class "body", Pseudo "hover"] ]
+         , Selector [ SimpleSelector [NamedElement "a", Class "txt-link"] ]
          ])
       ]
   , testCase "selectors invalid" $ forAllCases assertCantParseAs selectors
@@ -73,30 +109,67 @@ tests =
       ]
   , testCase "selector valid" $ forAllCases assertParsesAs selector
       [ ("#top-container .intro-container p.introtext",
-        Selector [ [Id "top-container"]
-                 , [Class "intro-container"]
-                 , [NamedElement "p", Class "introtext"]
+        Selector [ SimpleSelector [Id "top-container"]
+                 , SimpleSelector [Class "intro-container"]
+                 , SimpleSelector [NamedElement "p", Class "introtext"]
                  ])
-      , (".login-container .body *.Txt-Link TD.body:hover a.txt-link",
-        Selector [ [Class "login-container"]
-                 , [Class "body"]
-                 , [WildcardElement, Class "Txt-Link"]
-                 , [NamedElement "td", Class "body", Pseudo "hover"]
-                 , [NamedElement "a", Class "txt-link"]
+      , (".login-container .body *.Txt-Link > TD.body:hover a.txt-link",
+        Selector [ SimpleSelector [Class "login-container"]
+                 , SimpleSelector [Class "body"]
+                 , SimpleSelector [WildcardElement, Class "Txt-Link"]
+                 , NearestChildSelector [NamedElement "td", Class "body", Pseudo "hover"]
+                 , SimpleSelector [NamedElement "a", Class "txt-link"]
                  ])
       ]
   , testCase "selector invalid" $ forAllCases assertCantParseAs selector
       [ ("!", [Expect "selector"])
       , ("td.class td.body:", [Expect "identifier"])
       ]
+  , testCase "nearestChildSelector valid" $ forAllCases assertParsesAs nearestChildSelector
+      [ ("> a:hover",
+         NearestChildSelector [NamedElement "a", Pseudo "hover"])
+      , (">.squeeze.lime",
+         NearestChildSelector [Class "squeeze", Class "lime"])
+      ]
+  , testCase "nearestChildSelector invalid" $ forAllCases assertCantParseAs nearestChildSelector
+      [ ("a:hover", [])
+      , (".squeeze.lime", [])
+      , ("#footer", [])
+      ]
+  , testCase "plusSelector valid" $ forAllCases assertParsesAs plusSelector
+      [ ("+ a:hover",
+         PlusSelector [NamedElement "a", Pseudo "hover"])
+      , ("+.squeeze.lime",
+         PlusSelector [Class "squeeze", Class "lime"])
+      ]
+  , testCase "plusSelector invalid" $ forAllCases assertCantParseAs plusSelector
+      [ ("a:hover", [])
+      , (".squeeze.lime", [])
+      , ("#footer", [])
+      ]
   , testCase "simpleSelector valid" $ forAllCases assertParsesAs simpleSelector
+      [ ("TD.CLASS#ID", SimpleSelector [NamedElement "td", Class "CLASS", Id "ID"])
+      , (".CLASS-1#ID-1.class-2#id-2",
+         SimpleSelector [Class "CLASS-1", Id "ID-1", Class "class-2", Id "id-2"])
+      , ("a:HOVER", SimpleSelector [NamedElement "a", Pseudo "hover"])
+      , (".happy", SimpleSelector [Class "happy"])
+      ]
+  , testCase "simpleSelector invalid" $ forAllCases assertCantParseAs simpleSelector
+      [ ("!", [Expect "#id", Expect ".class", Expect "element-name", Expect ":pseudo-element"])
+      , ("td.class.9", [Expect "identifier"])
+      ]
+  , testCase "selectorTerms valid" $ forAllCases assertParsesAs selectorTerms
       [ ("TD.CLASS#ID", [NamedElement "td", Class "CLASS", Id "ID"])
       , (".CLASS-1#ID-1.class-2#id-2",
          [Class "CLASS-1", Id "ID-1", Class "class-2", Id "id-2"])
       , ("a:HOVER", [NamedElement "a", Pseudo "hover"])
       , (".happy", [Class "happy"])
+      , ("input[type='text'].tooltip",
+         [ NamedElement "input"
+         , Attribute "type" (Just $ EqualMatch "text")
+         , Class "tooltip" ])
       ]
-  , testCase "simpleSelector invalid" $ forAllCases assertCantParseAs simpleSelector
+  , testCase "selectorTerms invalid" $ forAllCases assertCantParseAs selectorTerms
       [ ("!", [Expect "#id", Expect ".class", Expect "element-name", Expect ":pseudo-element"])
       , ("td.class.9", [Expect "identifier"])
       ]
@@ -110,6 +183,13 @@ tests =
       , (".class", [Expect "element-name"])
       , (":pseudo", [Expect "element-name"])
       , ("#$22", [Expect "element-name"])
+      ]
+  , testCase "attribute valid" $ forAllCases assertParsesAs attribute
+      [ ("[selected]", Attribute "selected" Nothing)
+      , ("[SELECTED]", Attribute "SELECTED" Nothing)
+      , ("[type='INPUT']", Attribute "type" (Just $ EqualMatch "INPUT"))
+      , ("[LANG~='en, DE']", Attribute "LANG" (Just $ IncludesMatch "en, DE"))
+      , ("[lang|='En']", Attribute "lang" (Just $ DashMatch "En"))
       ]
   , testCase "id valid" $ forAllCases assertParsesAs identity
       [ ("#Keep_Case", Id "Keep_Case")
@@ -169,7 +249,7 @@ tests =
                      [ NumericTerm 0 Nothing ]
                      (Just $ Priority "important")),
         ("*font: 12px \"Helvetica Neue\"",
-         Declaration (Property "font" (Just $ Hack '*'))
+         Declaration (Property "font" (Just $ PropertyHack '*'))
                      [ NumericTerm 12.0 (Just Pixel),
                        StringTerm "Helvetica Neue" ]
                      Nothing),
@@ -208,7 +288,7 @@ tests =
       , ("border 1px solid #9e9e9e", [])
       ]
   , testCase "property valid" $ forAllCases assertParsesAs property
-      [ ("_abc", Property "abc" (Just $ Hack '_'))
+      [ ("_abc", Property "abc" (Just $ PropertyHack '_'))
       , ("ABCCC", Property "abccc" Nothing)
       , ("-moz-border-radius", Property "-moz-border-radius" Nothing)
       ]
@@ -219,9 +299,9 @@ tests =
       , ("124", [])
       ]
   , testCase "hackedProperty valid" $ forAllCases assertParsesAs hackedProperty
-      [ ("*abc", Property "abc" (Just $ Hack '*'))
-      , ("_ABC", Property "abc" (Just $ Hack '_'))
-      , ("#A-c", Property "a-c" (Just $ Hack '#'))
+      [ ("*abc", Property "abc" (Just $ PropertyHack '*'))
+      , ("_ABC", Property "abc" (Just $ PropertyHack '_'))
+      , ("#A-c", Property "a-c" (Just $ PropertyHack '#'))
       ]
   , testCase "hackedProperty invalid" $ forAllCases assertCantParseAs hackedProperty
       [ ("-moz-border-radius", [])
@@ -266,6 +346,11 @@ tests =
       , ("#ffffff /*hey ho*/      \"BLAH\"",
          [ RGBColor 255 255 255
          , StringTerm "BLAH" ])
+      , ("alpha(opacity=1) url(a.b) f(a) asd",
+         [ OpacityHack 1.0
+         , URI "a.b"
+         , FunctionTerm "f" [ IdentTerm "a" ]
+         , IdentTerm "asd" ])
       ]
   , testCase "op valid" $ forAllCases assertParsesAs termSeparator
       [ ("/", "/")
@@ -343,14 +428,24 @@ tests =
       , ("#bc", [Expect "identifier"])
       ]
   , testCase "uri valid" $ forAllCases assertParsesAs uri
-      [ ("url(\"blah\")", URI("blah"))
-      , ("URL('blah')", URI("blah"))
-      , ("url(/*asd*/ http:/jim/bob.com/*bbbc*/ )", URI("http:/jim/bob.com"))
-      , ("url()", URI(""))
+      [ ("url(\"blah\")", URI "blah")
+      , ("URL('blah')", URI "blah")
+      , ("url(/*asd*/ http:/jim/bob.com/*bbbc*/ )", URI "http:/jim/bob.com")
+      , ("url()", URI "")
       ]
   , testCase "uri invalid" $ forAllCases assertCantParseAs uri
       [ ("abc", [Expect "uri"])
       , ("url(", [Expect "quoted string", Expect "unquoted string"])
+      ]
+  , testCase "opacityHack valid" $ forAllCases assertParsesAs opacityHack
+      [ ("alpha(opacity=0.5)", OpacityHack 0.5)
+      , ("ALPHA(/*hey*/OPACITY = .2)", OpacityHack 0.2)
+      ]
+  , testCase "opacityHack invalid" $ forAllCases assertCantParseAs opacityHack
+      [ ("alpha(0.5)", [])
+      , ("alpha(opacity)", [])
+      , ("alpha('opacity'=1)", [])
+      , ("opacity=2", [])
       ]
   , testCase "quotedString valid" $ forAllCases assertParsesAs quotedString
       [ ("''", "")
@@ -379,6 +474,8 @@ tests =
       [ ("0x56", [Expect "hexcolor"])
       , ("ffffff", [Expect "hexcolor"])
       , ("#abj", [Expect "hexadecimal digit"])
+      , ("#ffff 12px", [])
+      , ("#fffffff 12px", [])
       ]
   , testCase "unlexemedIdentifier valid" $ forAllCases assertParsesAs unlexemedIdentifier
       [ ("abcd", "abcd")
@@ -410,6 +507,25 @@ tests =
       [ ("2bc", [Expect "identifier"])
       , ("#bc", [Expect "identifier"])
       ]
+  , testCase "function valid" $ forAllCases assertParsesAs functionTerm
+      [ ("gah()", FunctionTerm "gah" [])
+      , ("func(A, B, c)",
+         FunctionTerm "func"
+          [ IdentTerm "a"
+          , IdentTerm "b"
+          , IdentTerm "c"])
+      , ("AAAA(2.0PX 'Blah' 3.0%)",
+         FunctionTerm "aaaa"
+           [ NumericTerm 2.0 (Just Pixel)
+           , StringTerm "Blah"
+           , NumericTerm 3.0 (Just Percentage) ])
+      ]
+  , testCase "function invalid" $ forAllCases assertCantParseAs functionTerm
+      [ ("1ab(3)", [Expect "function"])
+      , ("()", [Expect "function"])
+      , ("a", [])
+      , ("a(2", [])
+      ]
   , testCase "num valid" $ forAllCases assertParsesAs num
       [ ("2", 2)
       , ("98", 98)
@@ -432,22 +548,34 @@ tests =
       ]
   ]
 
-forAllCases asserter p cases = do
-  sequence $ map (\(input, expected) -> asserter p input expected) cases
-  return ()
+forAllCases :: (Show a, Eq a) => (Parsec String () a -> String -> b -> Assertion)
+                              -> Parsec String () a
+                              -> [(String, b)]
+                              -> Assertion
+forAllCases asserter p = mapM_ (uncurry (asserter p))
 
+assertParsesAs :: (Show a, Eq a) => Parsec String () a
+                                 -> String
+                                 -> a
+                                 -> Assertion
 assertParsesAs p input expected =
   case parse p input input of
     Left msg -> assertFailure $ "Failed with msg: " ++ show msg
     Right actual -> assertEqual input expected actual
 
+assertCantParseAs :: (Show a, Eq a) => Parsec String () a
+                                    -> String
+                                    -> [Message]
+                                    -> Assertion
 assertCantParseAs p input expected =
   case parse p input input of
     Left err -> assertErrorContains err expected
     Right result -> assertFailure $ "Failed with parse result: " ++ show result
 
-assertErrorContains err [] = return ()
-assertErrorContains err (Expect ex:exs) = do
-  assertBool ("Should be expecting '" ++ ex ++ "' but got: \n" ++ (show err))
-            (ex `elem` (map messageString $ errorMessages err))
-  assertErrorContains err exs
+assertErrorContains :: ParseError -> [Message] -> Assertion
+assertErrorContains _err [] = return ()
+assertErrorContains err (Expect e:es) = do
+  assertBool ("Should be expecting '" ++ e ++ "' but got: \n" ++ show err)
+            (e `elem` map messageString (errorMessages err))
+  assertErrorContains err es
+assertErrorContains err (_:es) = assertErrorContains err es

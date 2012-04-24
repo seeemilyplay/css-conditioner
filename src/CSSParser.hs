@@ -18,106 +18,470 @@ import Text.Parsec.Language
 import Text.Parsec.String
 import Text.Parsec.Token
 
-data Stylesheet = Stylesheet (Maybe CharSet) [RuleSet]
-  deriving (Eq, Read, Show)
+data ParseData = ParseData SourcePos SourcePos
+  deriving (Eq, Show)
 
-data CharSet = CharSet String
-  deriving (Eq, Read, Show)
+class (Eq a, Show a) => ParseNode a where
+  parseData :: a -> ParseData
 
-data Media = Media [String] [RuleSet]
-  deriving (Eq, Read, Show)
+data Stylesheet = Stylesheet (Maybe CharSet) [Item] ParseData
+  deriving (Eq, Show)
 
-data RuleSet = RuleSet [Selector] [Declaration]
-  deriving (Eq, Read, Show)
+instance ParseNode Stylesheet where
+  parseData (Stylesheet _ _ pd) = pd
 
-data Selector = Selector [SelectorPart]
-  deriving (Eq, Read, Show)
+data CharSet = CharSet StringLiteral ParseData
+  deriving (Eq, Show)
 
-data SelectorPart =  NearestChildSelector [SelectorTerm]
-                   | PlusSelector [SelectorTerm]
-                   | SimpleSelector [SelectorTerm]
-  deriving (Eq, Read, Show)
+instance ParseNode CharSet where
+  parseData (CharSet _ pd) = pd
 
-data SelectorTerm = NamedElement String
-                    | WildcardElement
-                    | Id String
-                    | Class String
-                    | Pseudo String
-                    | Attribute String (Maybe AttributeMatch)
-  deriving (Eq, Read, Show)
+data Item =   MediaItem Media ParseData
+            | RuleSetItem RuleSet ParseData
+  deriving (Eq, Show)
 
-data AttributeMatch =   EqualMatch String
-                      | IncludesMatch String
-                      | DashMatch String
-  deriving (Eq, Read, Show)
+instance ParseNode Item where
+  parseData (MediaItem _ pd) = pd
+  parseData (RuleSetItem _ pd) = pd
 
-data Declaration = Declaration Property [Term] (Maybe Priority)
-  deriving (Eq, Read, Show)
+data Media = Media [Identifier] [RuleSet] ParseData
+  deriving (Eq, Show)
 
-data Property = Property String (Maybe PropertyHack)
-  deriving (Eq, Read, Show)
+instance ParseNode Media where
+  parseData (Media _ _ pd) = pd
 
-data PropertyHack = PropertyHack Char
-  deriving (Eq, Read, Show)
+data RuleSet = RuleSet [Selector] [Declaration] ParseData
+  deriving (Eq, Show)
 
-data Priority = Priority String
-  deriving (Eq, Read, Show)
+instance ParseNode RuleSet where
+  parseData (RuleSet _ _ pd) = pd
 
-data Term =   NumericTerm Double (Maybe Unit)
-            | StringTerm String
-            | IdentTerm String
-            | URI String
-            | RGBColor Integer Integer Integer
-            | OpacityHack Double
-            | FunctionTerm String [Term]
-  deriving (Eq, Read, Show)
+data Selector = Selector [SelectorPart] ParseData
+  deriving (Eq, Show)
 
-data Unit = Percentage
-          | Pixel
-          | Centimeter
-          | Millimeter
-          | Inch
-          | Point
-          | Pica
-          | Ems
-          | Exs
-          | Degree
-          | Radian
-          | Grad
-          | Millisecond
-          | Second
-          | Hertz
-          | Kilohertz
-  deriving (Eq, Read, Show)
+instance ParseNode Selector where
+  parseData (Selector _ pd) = pd
+
+data SelectorPart =   NearestChildSelectorPart NearestChildSelector ParseData
+                    | SiblingSelectorPart SiblingSelector ParseData
+                    | SimpleSelectorPart SimpleSelector ParseData
+  deriving (Eq, Show)
+
+instance ParseNode SelectorPart where
+  parseData (NearestChildSelectorPart _ pd) = pd
+  parseData (SiblingSelectorPart _ pd) = pd
+  parseData (SimpleSelectorPart _ pd) = pd
+
+data NearestChildSelector = NearestChildSelector [SelTerm] ParseData
+  deriving (Eq, Show)
+
+instance ParseNode NearestChildSelector where
+  parseData (NearestChildSelector _ pd) = pd
+
+data SiblingSelector = SiblingSelector [SelTerm] ParseData
+  deriving (Eq, Show)
+
+instance ParseNode SiblingSelector where
+  parseData (SiblingSelector _ pd) = pd
+
+data SimpleSelector = SimpleSelector [SelTerm] ParseData
+  deriving (Eq, Show)
+
+instance ParseNode SimpleSelector where
+  parseData (SimpleSelector _ pd) = pd
+
+data SelTerm =   ElementSelTerm Element ParseData
+               | IdSelTerm Id ParseData
+               | ClassSelTerm Class ParseData
+               | PseudoElementSelTerm PseudoElement ParseData
+               | AttributeSelTerm Attribute ParseData
+  deriving (Eq, Show)
+
+instance ParseNode SelTerm where
+  parseData (ElementSelTerm _ pd) = pd
+  parseData (IdSelTerm _ pd) = pd
+  parseData (ClassSelTerm _ pd) = pd
+  parseData (PseudoElementSelTerm _ pd) = pd
+  parseData (AttributeSelTerm _ pd) = pd
+
+data Element =   NameElement Name ParseData
+               | WildcardElement Wildcard ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Element where
+  parseData (NameElement _ pd) = pd
+  parseData (WildcardElement _ pd) = pd
+
+data Name = Name Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Name where
+  parseData (Name _ pd) = pd
+
+data Wildcard = Wildcard ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Wildcard where
+  parseData (Wildcard pd) = pd
+
+data Id = Id Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Id where
+  parseData (Id _ pd) = pd
+
+data Class = Class Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Class where
+  parseData (Class _ pd) = pd
+
+data PseudoElement = PseudoElement Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode PseudoElement where
+  parseData (PseudoElement _ pd) = pd
+
+data Attribute =   AttributeHas HasMatcher ParseData
+                 | AttributeEquals EqualsMatcher ParseData
+                 | AttributeIncludes IncludesMatcher ParseData
+                 | AttributeLike LikeMatcher ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Attribute where
+  parseData (AttributeHas _ pd) = pd
+  parseData (AttributeEquals _ pd) = pd
+  parseData (AttributeIncludes _ pd) = pd
+  parseData (AttributeLike _ pd) = pd
+
+data HasMatcher = HasMatcher Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode HasMatcher where
+  parseData (HasMatcher _ pd) = pd
+
+data EqualsMatcher = EqualsMatcher Identifier StringLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode EqualsMatcher where
+  parseData (EqualsMatcher _ _ pd) = pd
+
+data IncludesMatcher = IncludesMatcher Identifier StringLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode IncludesMatcher where
+  parseData (IncludesMatcher _ _ pd) = pd
+
+data LikeMatcher = LikeMatcher Identifier StringLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode LikeMatcher where
+  parseData (LikeMatcher _ _ pd) = pd
+
+data Declaration = Declaration (Maybe DeclarationHack)
+                               Property
+                               Expression
+                               Priority
+                               ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Declaration where
+  parseData (Declaration _ _ _ _ pd) = pd
+
+data DeclarationHack =   AsterixDeclarationHack AsterixHack ParseData
+                       | HashDeclarationHack HashHack ParseData
+                       | UnderscoreDeclarationHack UnderscoreHack ParseData
+  deriving (Eq, Show)
+
+instance ParseNode DeclarationHack where
+  parseData (AsterixDeclarationHack _ pd) = pd
+  parseData (HashDeclarationHack _ pd) = pd
+  parseData (UnderscoreDeclarationHack _ pd) = pd
+
+data AsterixHack = AsterixHack ParseData
+  deriving (Eq, Show)
+
+instance ParseNode AsterixHack where
+  parseData (AsterixHack pd) = pd
+
+data HashHack = HashHack ParseData
+  deriving (Eq, Show)
+
+instance ParseNode HashHack where
+  parseData (HashHack pd) = pd
+
+data UnderscoreHack = UnderscoreHack ParseData
+  deriving (Eq, Show)
+
+instance ParseNode UnderscoreHack where
+  parseData (UnderscoreHack pd) = pd
+
+data Property = Property Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Property where
+  parseData (Property _ pd) = pd
+
+data Priority =   ImportantPriority Important ParseData
+                | NormalPriority ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Priority where
+  parseData (ImportantPriority _ pd) = pd
+  parseData (NormalPriority pd) = pd
+
+data Important = Important ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Important where
+  parseData (Important pd) = pd
+
+data Expression = Expression [Term] ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Expression where
+  parseData (Expression _ pd) = pd
+
+data Term =   HexcolorLiteralTerm HexcolorLiteral ParseData
+            | MeasureTerm Measure ParseData
+            | StringLiteralTerm StringLiteral ParseData
+            | URITerm URI ParseData
+            | OpacityHackTerm OpacityHack ParseData
+            | FunctionTerm Function ParseData
+            | IdentifierTerm Identifier ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Term where
+  parseData (HexcolorLiteralTerm _ pd) = pd
+  parseData (MeasureTerm _ pd) = pd
+  parseData (StringLiteralTerm _ pd) = pd
+  parseData (URITerm _ pd) = pd
+  parseData (OpacityHackTerm _ pd) = pd
+  parseData (FunctionTerm _ pd) = pd
+  parseData (IdentifierTerm _ pd) = pd
+
+data Measure =   PercentageMeasure Percentage ParseData
+               | CentimeterMeasure Centimeter ParseData
+               | InchMeasure Inch ParseData
+               | DegreeMeasure Degree ParseData
+               | RadianMeasure Radian ParseData
+               | GradMeasure Grad ParseData
+               | SecondMeasure Second ParseData
+               | HertzMeasure Hertz ParseData
+               | KilohertzMeasure Kilohertz ParseData
+               | EmsMeasure Ems ParseData
+               | ExsMeasure Exs ParseData
+               | MillimeterMeasure Millimeter ParseData
+               | MillisecondMeasure Millisecond ParseData
+               | PixelMeasure Pixel ParseData
+               | PointMeasure Point ParseData
+               | PicaMeasure Pica ParseData
+               | NumberOnlyMeasure NumberOnly ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Measure where
+  parseData (PercentageMeasure _ pd) = pd
+  parseData (CentimeterMeasure _ pd) = pd
+  parseData (InchMeasure _ pd) = pd
+  parseData (DegreeMeasure _ pd) = pd
+  parseData (RadianMeasure _ pd) = pd
+  parseData (GradMeasure _ pd) = pd
+  parseData (SecondMeasure _ pd) = pd
+  parseData (HertzMeasure _ pd) = pd
+  parseData (KilohertzMeasure _ pd) = pd
+  parseData (EmsMeasure _ pd) = pd
+  parseData (ExsMeasure _ pd) = pd
+  parseData (MillimeterMeasure _ pd) = pd
+  parseData (MillisecondMeasure _ pd) = pd
+  parseData (PixelMeasure _ pd) = pd
+  parseData (PointMeasure _ pd) = pd
+  parseData (PicaMeasure _ pd) = pd
+  parseData (NumberOnlyMeasure _ pd) = pd
+
+data Function = Function Identifier Expression ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Function where
+  parseData (Function _ _ pd) = pd
+
+data Percentage = Percentage NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Percentage where
+  parseData (Percentage _ pd) = pd
+
+data Centimeter = Centimeter NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Centimeter where
+  parseData (Centimeter _ pd) = pd
+
+data Inch = Inch NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Inch where
+  parseData (Inch _ pd) = pd
+
+data Degree = Degree NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Degree where
+  parseData (Degree _ pd) = pd
+
+data Radian = Radian NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Radian where
+  parseData (Radian _ pd) = pd
+
+data Grad = Grad NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Grad where
+  parseData (Grad _ pd) = pd
+
+data Second = Second NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Second where
+  parseData (Second _ pd) = pd
+
+data Hertz = Hertz NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Hertz where
+  parseData (Hertz _ pd) = pd
+
+data Kilohertz = Kilohertz NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Kilohertz where
+  parseData (Kilohertz _ pd) = pd
+
+data Ems = Ems NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Ems where
+  parseData (Ems _ pd) = pd
+
+data Exs = Exs NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Exs where
+  parseData (Exs _ pd) = pd
+
+data Millimeter = Millimeter NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Millimeter where
+  parseData (Millimeter _ pd) = pd
+
+data Millisecond = Millisecond NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Millisecond where
+  parseData (Millisecond _ pd) = pd
+
+data Pixel = Pixel NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Pixel where
+  parseData (Pixel _ pd) = pd
+
+data Point = Point NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Point where
+  parseData (Point _ pd) = pd
+
+data Pica = Pica NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Pica where
+  parseData (Pica _ pd) = pd
+
+data NumberOnly = NumberOnly NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode NumberOnly where
+  parseData (NumberOnly _ pd) = pd
+
+data URI = URI StringLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode URI where
+  parseData (URI _ pd) = pd
+
+data OpacityHack = OpacityHack NumberLiteral ParseData
+  deriving (Eq, Show)
+
+instance ParseNode OpacityHack where
+  parseData (OpacityHack _ pd) = pd
+
+data Identifier = Identifier String ParseData
+  deriving (Eq, Show)
+
+instance ParseNode Identifier where
+  parseData (Identifier _ pd) = pd
+
+data StringLiteral = StringLiteral String ParseData
+  deriving (Eq, Show)
+
+instance ParseNode StringLiteral where
+  parseData (StringLiteral _ pd) = pd
+
+data HexcolorLiteral = HexcolorLiteral Integer Integer Integer ParseData
+  deriving (Eq, Show)
+
+instance ParseNode HexcolorLiteral where
+  parseData (HexcolorLiteral _ _ _ pd) = pd
+
+data NumberLiteral = NumberLiteral Double ParseData
+  deriving (Eq, Show)
+
+instance ParseNode NumberLiteral where
+  parseData (NumberLiteral _ pd) = pd
+
+parseCSSFile :: FilePath -> IO (Either ParseError Stylesheet)
+parseCSSFile file = do
+  csscontents <- readFile file
+  let css = parse stylesheet file csscontents
+  return css
 
 stylesheet :: GenParser Char st Stylesheet
-stylesheet = do
+stylesheet = withParseData $ do
   (whiteSpace lexer)
   mcharset <- optionMaybe charset
-  rulesets <- many ruleset
+  items <- many item
   _ <- eof
-  return $ Stylesheet mcharset rulesets
+  return $ Stylesheet mcharset items
 
 charset :: GenParser Char st CharSet
-charset = (do
+charset = withParseData (do
   _ <- lexeme lexer $ stringIgnoreCase "@charset "
-  cs <- map toLower <$> quotedString
+  cs <- CSSParser.stringLiteral
   _ <- semi lexer
   return $ CharSet cs) <?> "@charset"
 
-media :: GenParser Char set Media
-media = (do
+item :: GenParser Char st Item
+item = withParseData $ choice
+  [ MediaItem <$> media
+  , RuleSetItem <$> ruleset
+  ]
+
+media :: GenParser Char st Media
+media = withParseData (do
   _ <- lexeme lexer $ stringIgnoreCase "@media "
-  m <- map toLower <$> identifier lexer
+  m <- lexemedIdentifier
   ms <- many (do
     _ <- comma lexer
-    map toLower <$> identifier lexer)
+    lexemedIdentifier)
   rs <- braces lexer $ many ruleset
   return $ Media (m:ms) rs
   ) <?> "@media"
 
 ruleset :: GenParser Char st RuleSet
-ruleset = (do
+ruleset = withParseData (do
   sels <- selectors
   decs <- braces lexer declarations
   return $ RuleSet sels decs) <?> "rule set"
@@ -133,89 +497,102 @@ selectors = do
     Nothing -> return [s]
 
 selector :: GenParser Char st Selector
-selector = (Selector <$> do
-  s <- simpleSelector
+selector = withParseData (do
+  s <- (withParseData $ SimpleSelectorPart <$> simpleSelector)
   ss <- many selectorPart
-  return $ s : ss) <?> "selector"
+  return $ Selector (s:ss)) <?> "selector"
 
 selectorPart :: GenParser Char st SelectorPart
-selectorPart = nearestChildSelector <|> plusSelector <|> simpleSelector
+selectorPart = withParseData $ choice [
+    NearestChildSelectorPart <$> nearestChildSelector
+  , SiblingSelectorPart <$> siblingSelector
+  , SimpleSelectorPart <$> simpleSelector
+  ]
 
-nearestChildSelector :: GenParser Char st SelectorPart
-nearestChildSelector = (do
+nearestChildSelector :: GenParser Char st NearestChildSelector
+nearestChildSelector = withParseData $ do
   _ <- lexeme lexer $ char '>'
-  NearestChildSelector <$> selectorTerms) <?> ""
+  NearestChildSelector <$> selTerms
 
-plusSelector :: GenParser Char st SelectorPart
-plusSelector = (do
+siblingSelector :: GenParser Char st SiblingSelector
+siblingSelector = withParseData $ do
   _ <- lexeme lexer $ char '+'
-  PlusSelector <$> selectorTerms) <?> ""
+  SiblingSelector <$> selTerms
 
-simpleSelector :: GenParser Char st SelectorPart
-simpleSelector = SimpleSelector <$> selectorTerms
+simpleSelector :: GenParser Char st SimpleSelector
+simpleSelector = withParseData $ SimpleSelector <$> selTerms
 
-selectorTerms :: GenParser Char st [SelectorTerm]
-selectorTerms = lexeme lexer $ choice [withElement, withoutElement]
+selTerms :: GenParser Char st [SelTerm]
+selTerms = lexeme lexer $ do
+  mt <- optionMaybe anySelTerm
+  case mt of
+    Nothing -> many1 nonElementSelTerm
+    Just t -> do
+      ts <- many nonElementSelTerm
+      return $ t:ts
+
+anySelTerm :: GenParser Char st SelTerm
+anySelTerm =
+  (withParseData $ ElementSelTerm <$> element) <|> nonElementSelTerm
+
+nonElementSelTerm :: GenParser Char st SelTerm
+nonElementSelTerm = withParseData $ choice [
+    IdSelTerm <$> CSSParser.id
+  , ClassSelTerm <$> clazz
+  , PseudoElementSelTerm <$> pseudoElement
+  , AttributeSelTerm <$> attribute
+  ]
+
+element :: GenParser Char st Element
+element = withParseData (
+  (NameElement <$> nameElement) <|> (WildcardElement <$> wildcard)) <?> "element"
   where
-    withElement = do
-      el <- elementName
-      rest <- many $ choice [identity, clazz, pseudoElement, attribute]
-      return $ el : rest
-    withoutElement = many1 $ choice [identity, clazz, pseudoElement, attribute]
+    nameElement = withParseData $
+      Name <$> unlexemedIdentifier
+    wildcard = withParseData $ do
+      _ <- char '*'
+      return Wildcard
 
-elementName :: GenParser Char st SelectorTerm
-elementName = (named <|> wildcard) <?> "element-name"
-  where
-    named = do
-      s <- map toLower <$> unlexemedIdentifier
-      return $ NamedElement s
-    wildcard = do
-      _c <- char '*'
-      return WildcardElement
-
-attribute :: GenParser Char st SelectorTerm
-attribute = brackets lexer (do
-  attName <- identifier lexer
-  mmatch <- optionMaybe match
-  return $ Attribute attName mmatch) <?> "[attribute]"
-  where
-    match = (equalMatch <|> includesMatch <|> dashMatch) <?> "att val"
-    equalMatch = do
-      _ <- lexeme lexer $ char '='
-      val <- identifier lexer <|> quotedString
-      return $ EqualMatch val
-    includesMatch = do
-      _ <- lexeme lexer $ string "~="
-      val <- identifier lexer <|> quotedString
-      return $ IncludesMatch val
-    dashMatch = do
-      _ <- lexeme lexer $ string "|="
-      val <- identifier lexer <|> quotedString
-      return $ DashMatch val
-
-identity :: GenParser Char st SelectorTerm
-identity = (do
+id :: GenParser Char st Id
+id = withParseData (do
   _ <- char '#'
-  s <- many1 $ choice [oneOf "_-", alphaNum]
-  return $ Id s) <?> "#id"
+  Id <$> unlexemedIdentifier) <?> "#id"
 
-clazz :: GenParser Char st SelectorTerm
-clazz = (do
+clazz :: GenParser Char st Class
+clazz = withParseData (do
   _ <- char '.'
-  s <- unlexemedIdentifier
-  return $ Class s) <?> ".class"
+  Class <$> unlexemedIdentifier) <?> ".class"
 
-pseudoElement :: GenParser Char st SelectorTerm
-pseudoElement = (do
+pseudoElement :: GenParser Char st PseudoElement
+pseudoElement = withParseData (do
   _ <- char ':'
-  s <- map toLower <$> unlexemedIdentifier
-  return $ Pseudo s) <?> ":pseudo-element"
+  PseudoElement <$> unlexemedIdentifier) <?> ":pseudo-element"
 
-unlexemedIdentifier :: GenParser Char st String
-unlexemedIdentifier = (do
-  start <- identStart cssDef
-  rest <- many $ identLetter cssDef
-  return $ start : rest) <?> "identifier"
+attribute :: GenParser Char st Attribute
+attribute = withParseData (brackets lexer $ choice
+  [ AttributeLike <$> likeMatcher
+  , AttributeIncludes <$> includesMatcher
+  , AttributeEquals <$> equalsMatcher
+  , AttributeHas <$> hasMatcher
+  ]) <?> "[attribute]"
+  where
+    likeMatcher = withParseData $ do
+      att <- lexemedIdentifier
+      _ <- lexeme lexer $ string "|="
+      val <- CSSParser.stringLiteral
+      return $ LikeMatcher att val
+    includesMatcher = withParseData $ do
+      att <- lexemedIdentifier
+      _ <- lexeme lexer $ string "~="
+      val <- CSSParser.stringLiteral
+      return $ IncludesMatcher att val
+    equalsMatcher = withParseData $ do
+      att <- lexemedIdentifier
+      _ <- lexeme lexer $ char '='
+      val <- CSSParser.stringLiteral
+      return $ EqualsMatcher att val
+    hasMatcher = withParseData $
+      HasMatcher <$> lexemedIdentifier
 
 declarations :: GenParser Char st [Declaration]
 declarations = do
@@ -230,223 +607,175 @@ declarations = do
     (Nothing, Nothing) -> return []
 
 declaration :: GenParser Char st Declaration
-declaration = (do
+declaration = withParseData (do
+  mhack <- optionMaybe declarationHack
   prop <- property
   _ <- (colon lexer)
-  terms <- expr
-  mprior <- optionMaybe priority
-  return $ Declaration prop terms mprior) <?> "declaration"
+  expr <- expression
+  prior <- priority
+  return $ Declaration mhack prop expr prior) <?> "declaration"
+
+declarationHack :: GenParser Char st DeclarationHack
+declarationHack = withParseData (choice
+  [ AsterixDeclarationHack <$> asterixHack
+  , HashDeclarationHack <$> hashHack
+  , UnderscoreDeclarationHack <$> underscoreHack
+  ]) <?> ""
+  where
+    asterixHack = withParseData $ do
+      _ <- lexeme lexer $ char '*'
+      return AsterixHack
+    hashHack = withParseData $ do
+      _ <- lexeme lexer $ char '#'
+      return HashHack
+    underscoreHack = withParseData $ do
+      _ <- lexeme lexer $ char '_'
+      return UnderscoreHack
 
 property :: GenParser Char st Property
-property = (hackedProperty <|> unhackedProperty) <?> "property"
-
-unhackedProperty :: GenParser Char st Property
-unhackedProperty = do
-  prop <- map toLower <$> identifier lexer
-  return $ Property prop Nothing
-
-hackedProperty :: GenParser Char st Property
-hackedProperty = do
-  hack <- PropertyHack <$> oneOf "#_*"
-  prop <- map toLower <$> identifier lexer
-  return $ Property prop (Just hack)
+property = withParseData (Property <$> lexemedIdentifier) <?> "property"
 
 priority :: GenParser Char st Priority
-priority = (do
-  _ <- lexeme lexer $ char '!'
-  Priority . map toLower <$> identifier lexer) <?> "priority"
+priority = withParseData (do
+  mimportant <- optionMaybe important
+  case mimportant of
+    (Just imp) -> return $ ImportantPriority imp
+    Nothing -> return NormalPriority) <?> ""
 
-expr :: GenParser Char st [Term]
-expr = sepBy term (optional termSeparator)
+important :: GenParser Char st Important
+important = withParseData (do
+  _ <- stringIgnoreCase "!important"
+  return Important) <?> "!important"
 
-termSeparator :: GenParser Char st String
-termSeparator = (comma lexer <|> forwardSlash) <?> "term separator"
+expression :: GenParser Char st Expression
+expression = withParseData
+  (Expression <$> sepBy term (optional termSeparator)) <?> "expression"
   where
-    forwardSlash = lexeme lexer $ do
-      c <- char '/'
-      return [c]
+    termSeparator :: GenParser Char st String
+    termSeparator = (comma lexer <|> forwardSlash) <?> ""
+      where
+        forwardSlash = lexeme lexer $ do
+          c <- char '/'
+          return [c]
 
 term :: GenParser Char st Term
-term = choice
-  [ numericTerm
-  , stringTerm
-  , try uri <|> (try opacityHack <|> (try functionTerm <|> identTerm))
-  , try opacityHack <|> (try functionTerm <|> identTerm)
-  , try functionTerm <|> identTerm
-  , identTerm
-  , hexcolor ]
+term = withParseData (choice
+  [ HexcolorLiteralTerm <$> hexcolorLiteral
+  , MeasureTerm <$> measure
+  , StringLiteralTerm <$> CSSParser.stringLiteral
+  , try (URITerm <$> uri)
+      <|> (try (OpacityHackTerm <$> opacityHack)
+      <|> (try (FunctionTerm <$> function)
+      <|> (IdentifierTerm <$> lexemedIdentifier)))
+  , try (OpacityHackTerm <$> opacityHack)
+      <|> (try (FunctionTerm <$> function)
+      <|> (IdentifierTerm <$> lexemedIdentifier))
+  , try (FunctionTerm <$> function)
+      <|> (IdentifierTerm <$> lexemedIdentifier)
+  , IdentifierTerm <$> lexemedIdentifier
+  ]) <?> "term"
 
-numericTerm :: GenParser Char st Term
-numericTerm = (do
-  n <- num
-  munit <- optionMaybe unit
-  return $ NumericTerm n munit) <?> "numeric term"
+measure :: GenParser Char st Measure
+measure = (do
+  startpos <- getPosition
+  num <- numberLiteral
+  parseUnit startpos num) <?> "measure"
+  where
+    parseUnit startpos num = choice
+      [ unit PercentageMeasure Percentage (char '%')
+      , unit CentimeterMeasure Centimeter (stringIgnoreCase "cm")
+      , unit InchMeasure Inch (stringIgnoreCase "in")
+      , unit DegreeMeasure Degree (stringIgnoreCase "deg")
+      , unit RadianMeasure Radian (stringIgnoreCase "rad")
+      , unit GradMeasure Grad (stringIgnoreCase "grad")
+      , unit SecondMeasure Second (charIgnoreCase 's')
+      , unit HertzMeasure Hertz (stringIgnoreCase "hz")
+      , unit KilohertzMeasure Kilohertz (stringIgnoreCase "khz")
+      , try (unit EmsMeasure Ems (stringIgnoreCase "em"))
+        <|> (unit ExsMeasure Exs (stringIgnoreCase "ex"))
+      , try (unit MillimeterMeasure Millimeter (stringIgnoreCase "mm"))
+        <|> (unit MillisecondMeasure Millisecond (stringIgnoreCase "ms"))
+      , try (unit PixelMeasure Pixel (stringIgnoreCase "px"))
+        <|> (try (unit PointMeasure Point (stringIgnoreCase "pt"))
+             <|> (unit PicaMeasure Pica (stringIgnoreCase "pc")))
+      , unit NumberOnlyMeasure NumberOnly (return ())
+      ]
+      where
+        unit m c p = do
+          _ <- lexeme lexer $ p
+          endpos <- getPosition
+          let pd = ParseData startpos endpos
+          return $ m (c num pd) pd
 
-unit :: GenParser Char st Unit
-unit = choice
-  [ percentage
-  , centimeter
-  , inch
-  , degree
-  , radian
-  , grad
-  , second
-  , hertz
-  , kilohertz
-  , try ems <|> exs
-  , try pixel <|> (try point <|> pica)
-  , try millimeter <|> millisecond
-  ]
+function :: GenParser Char st Function
+function = withParseData (do
+  f <- lexemedIdentifier
+  args <- parens lexer expression
+  return $ Function f args) <?> "function"
 
-percentage :: GenParser Char st Unit
-percentage = lexeme lexer $ do
-  _ <- char '%'
-  return Percentage
-
-centimeter :: GenParser Char st Unit
-centimeter = lexeme lexer $ do
-  _ <- stringIgnoreCase "cm"
-  return Centimeter
-
-inch :: GenParser Char st Unit
-inch = lexeme lexer $ do
-  _ <- stringIgnoreCase "in"
-  return Inch
-
-degree :: GenParser Char st Unit
-degree = lexeme lexer $ do
-  _ <- stringIgnoreCase "deg"
-  return Degree
-
-radian :: GenParser Char st Unit
-radian = lexeme lexer $ do
-  _ <- stringIgnoreCase "rad"
-  return Radian
-
-grad :: GenParser Char st Unit
-grad = lexeme lexer $ do
-  _ <- stringIgnoreCase "grad"
-  return Grad
-
-second :: GenParser Char st Unit
-second = lexeme lexer $ do
-  _ <- charIgnoreCase 's'
-  return Second
-
-hertz :: GenParser Char st Unit
-hertz = lexeme lexer $ do
-  _ <- stringIgnoreCase "hz"
-  return Hertz
-
-kilohertz :: GenParser Char st Unit
-kilohertz = lexeme lexer $ do
-  _ <- stringIgnoreCase "khz"
-  return Kilohertz
-
-ems :: GenParser Char st Unit
-ems = lexeme lexer $ do
-  _ <- stringIgnoreCase "em"
-  return Ems
-
-exs :: GenParser Char st Unit
-exs = lexeme lexer $ do
-  _ <- stringIgnoreCase "ex"
-  return Exs
-
-pixel :: GenParser Char st Unit
-pixel = lexeme lexer $ do
-  _ <- stringIgnoreCase "px"
-  return Pixel
-
-point :: GenParser Char st Unit
-point = lexeme lexer $ do
-  _ <- stringIgnoreCase "pt"
-  return Point
-
-pica :: GenParser Char st Unit
-pica = lexeme lexer $ do
-  _ <- stringIgnoreCase "pc"
-  return Pica
-
-millimeter :: GenParser Char st Unit
-millimeter = lexeme lexer $ do
-  _ <- stringIgnoreCase "mm"
-  return Millimeter
-
-millisecond :: GenParser Char st Unit
-millisecond = lexeme lexer $ do
-  _ <- stringIgnoreCase "ms"
-  return Millisecond
-
-stringTerm :: GenParser Char st Term
-stringTerm = StringTerm <$> quotedString
-
-identTerm :: GenParser Char st Term
-identTerm = do
-  s <- identifier lexer
-  return . IdentTerm $ map toLower s
-
-uri :: GenParser Char st Term
-uri = (URI <$> do
+uri :: GenParser Char st URI
+uri = withParseData (URI <$> do
   _ <- stringIgnoreCase "url"
   parens lexer url) <?> "uri"
   where
-    url = quotedString <|> unquotedString
-    unquotedString = lexeme lexer (manyTill anyChar ending) <?> "unquoted string"
+    url = CSSParser.stringLiteral <|> unquotedString
+    unquotedString =
+      lexemeWithParseData (StringLiteral <$> manyTill anyChar ending) <?> ""
     ending = lookAhead $ do
       (whiteSpace lexer)
       char ')'
 
-opacityHack :: GenParser Char st Term
-opacityHack = (OpacityHack <$> do
+opacityHack :: GenParser Char st OpacityHack
+opacityHack = withParseData (OpacityHack <$> do
   _ <- stringIgnoreCase "alpha"
   parens lexer opacity) <?> ""
   where
     opacity = do
       _ <- lexeme lexer $ stringIgnoreCase "opacity"
       _ <- lexeme lexer $ char '='
-      num
+      numberLiteral
 
-stringIgnoreCase :: String -> GenParser Char st String
-stringIgnoreCase [] = return ""
-stringIgnoreCase (c:cs) = do
-  x <- charIgnoreCase c
-  xs <- stringIgnoreCase cs
-  return $ x : xs
+unlexemedIdentifier :: GenParser Char st Identifier
+unlexemedIdentifier = withParseData (do
+  start <- identStart cssDef
+  rest <- many $ identLetter cssDef
+  return . Identifier $ start : rest) <?> "identifier"
 
-charIgnoreCase :: Char -> GenParser Char st Char
-charIgnoreCase c =
-  char (toUpper c) <|> char (toLower c)
+lexemedIdentifier :: GenParser Char st Identifier
+lexemedIdentifier =
+  withParseData (Identifier <$> identifier lexer) <?> "identifier"
 
-quotedString :: GenParser Char st String
-quotedString = lexeme lexer (singleQuoted <|> doubleQuoted) <?> "quoted string"
+stringLiteral :: GenParser Char st StringLiteral
+stringLiteral = withParseData (do
+    s <- singleQuoted <|> doubleQuoted
+    return $ StringLiteral s) <?> "string"
   where
     singleQuoted =
       between (char '\'') (char '\'') (many $ noneOf "\n\r\f\\\'")
     doubleQuoted =
       between (char '"') (char '"') (many $ noneOf "\n\r\f\\\"")
 
-hexcolor :: GenParser Char st Term
-hexcolor = lexeme lexer (do
+hexcolorLiteral :: GenParser Char st HexcolorLiteral
+hexcolorLiteral = lexemeWithParseData (do
   _ <- char '#'
-  col <- try hexcolor6digits <|> hexcolor3digits
+  col <- try hexcolorLiteral6digits <|> hexcolorLiteral3digits
   mdig <- lookAhead $ optionMaybe hexdigit
   case mdig of
     Just _ -> fail "3 or 6 digits in hexcolor"
     Nothing -> return col) <?> "hexcolor"
 
-hexcolor3digits :: GenParser Char st Term
-hexcolor3digits = do
+hexcolorLiteral3digits :: GenParser Char st (ParseData -> HexcolorLiteral)
+hexcolorLiteral3digits = do
   [r, g, b] <- map base16 <$> count 3 hexdigit
-  return $ RGBColor r g b
+  return $ HexcolorLiteral r g b
   where
     base16 :: Integer -> Integer
     base16 x = x * 16 + x
 
-hexcolor6digits :: GenParser Char st Term
-hexcolor6digits = do
+hexcolorLiteral6digits :: GenParser Char st (ParseData -> HexcolorLiteral)
+hexcolorLiteral6digits = do
   [r1, r2, g1, g2, b1, b2] <- count 6 hexdigit
-  return $ RGBColor (base16 r1 r2) (base16 g1 g2) (base16 b1 b2)
+  return $ HexcolorLiteral (base16 r1 r2) (base16 g1 g2) (base16 b1 b2)
   where
     base16 :: Integer -> Integer -> Integer
     base16 x1 x2 = x1 * 16 + x2
@@ -473,16 +802,11 @@ hexdigit = toInt . toLower <$> hexDigit
     toInt 'f' = 15
     toInt c = error $ "Internal parser error, expected valid hex char got " ++ [c]
 
-functionTerm :: GenParser Char st Term
-functionTerm = (do
-  f <- map toLower <$> identifier lexer
-  args <- parens lexer expr
-  return $ FunctionTerm f args) <?> "function"
-
-num :: GenParser Char st Double
-num = lexeme lexer (do
+numberLiteral :: GenParser Char st NumberLiteral
+numberLiteral = lexemeWithParseData (do
   power <- sign
-  (*) power <$> (try decimalNum <|> wholeNum)) <?> "number"
+  val <- (*) power <$> (try decimalNum <|> wholeNum)
+  return $ NumberLiteral val) <?> "number"
   where
     sign :: GenParser Char st Double
     sign = do
@@ -501,6 +825,29 @@ num = lexeme lexer (do
         Just r -> return r
         Nothing -> fail $ "Unable to parse as number: " ++ s
 
+stringIgnoreCase :: String -> GenParser Char st String
+stringIgnoreCase [] = return ""
+stringIgnoreCase (c:cs) = do
+  x <- charIgnoreCase c
+  xs <- stringIgnoreCase cs
+  return $ x : xs
+
+charIgnoreCase :: Char -> GenParser Char st Char
+charIgnoreCase c =
+  char (toUpper c) <|> char (toLower c)
+
+withParseData :: ParsecT String st Identity (ParseData -> b)
+                 -> ParsecT String st Identity b
+withParseData p = do
+  start <- getPosition
+  r <- p
+  end <- getPosition
+  return $ r (ParseData start end)
+
+lexemeWithParseData :: ParsecT String st Identity (ParseData -> b)
+                       -> ParsecT String st Identity b
+lexemeWithParseData = withParseData . lexeme lexer
+
 lexer :: GenTokenParser String st Identity
 lexer = makeTokenParser cssDef
 
@@ -515,10 +862,3 @@ cssDef =
     , identLetter = alphaNum <|> oneOf "_-"
     , caseSensitive = False
     }
-
-parseFile :: FilePath -> IO ()
-parseFile file = do
-  csscontents <- readFile file
-  let css = parse stylesheet file csscontents
-  print css
-  return ()

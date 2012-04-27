@@ -1,4 +1,4 @@
-{-# OPTIONS -XMultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module CSS.Search (
     find

@@ -147,7 +147,7 @@ selTerms = lexeme lexer $ do
 
 anySelTerm :: GenParser Char st SelTerm
 anySelTerm =
-  (withParseData $ ElementSelTerm <$> element) <|> nonElementSelTerm
+  withParseData (ElementSelTerm <$> element) <|> nonElementSelTerm
 
 nonElementSelTerm :: GenParser Char st SelTerm
 nonElementSelTerm = withParseData $ choice [
@@ -306,17 +306,17 @@ measure = (do
       , unit HertzMeasure Hertz (stringIgnoreCase "hz")
       , unit KilohertzMeasure Kilohertz (stringIgnoreCase "khz")
       , try (unit EmsMeasure Ems (stringIgnoreCase "em"))
-        <|> (unit ExsMeasure Exs (stringIgnoreCase "ex"))
+        <|> unit ExsMeasure Exs (stringIgnoreCase "ex")
       , try (unit MillimeterMeasure Millimeter (stringIgnoreCase "mm"))
-        <|> (unit MillisecondMeasure Millisecond (stringIgnoreCase "ms"))
+        <|> unit MillisecondMeasure Millisecond (stringIgnoreCase "ms")
       , try (unit PixelMeasure Pixel (stringIgnoreCase "px"))
         <|> (try (unit PointMeasure Point (stringIgnoreCase "pt"))
-             <|> (unit PicaMeasure Pica (stringIgnoreCase "pc")))
+             <|> unit PicaMeasure Pica (stringIgnoreCase "pc"))
       , unit NumberOnlyMeasure NumberOnly (return ())
       ]
       where
         unit m c p = do
-          _ <- lexeme lexer $ p
+          _ <- lexeme lexer p
           endpos <- getPosition
           let pd = ParseData startpos endpos
           return $ m (c num pd) pd

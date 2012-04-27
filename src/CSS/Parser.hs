@@ -7,7 +7,43 @@
                     stuff that can go at the top of your stylesheet
                     @font-face stuff (not in spec but hey)
 -}
-module CSSParser where
+module CSS.Parser (
+    parseCSSFile
+  , stylesheet
+  , charset
+  , item
+  , media
+  , ruleset
+  , selectors
+  , selector
+  , selectorPart
+  , nearestChildSelector
+  , simpleSelector
+  , selTerms
+  , anySelTerm
+  , nonElementSelTerm
+  , element
+  , CSS.Parser.id
+  , clazz
+  , pseudoElement
+  , attribute
+  , declarations
+  , declaration
+  , declarationHack
+  , property
+  , priority
+  , important
+  , expression
+  , term
+  , measure
+  , function
+  , uri
+  , opacityHack
+  , unlexemedIdentifier
+  , lexemedIdentifier
+  , CSS.Parser.stringLiteral
+  , hexcolorLiteral
+  , numberLiteral) where
 
 import Control.Applicative ((<$>))
 import Data.Char
@@ -18,429 +54,7 @@ import Text.Parsec.Language
 import Text.Parsec.String
 import Text.Parsec.Token
 
-data ParseData = ParseData SourcePos SourcePos
-  deriving (Eq, Show)
-
-class (Eq a, Show a) => ParseNode a where
-  parseData :: a -> ParseData
-
-data Stylesheet = Stylesheet (Maybe CharSet) [Item] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Stylesheet where
-  parseData (Stylesheet _ _ pd) = pd
-
-data CharSet = CharSet StringLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode CharSet where
-  parseData (CharSet _ pd) = pd
-
-data Item =   MediaItem Media ParseData
-            | RuleSetItem RuleSet ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Item where
-  parseData (MediaItem _ pd) = pd
-  parseData (RuleSetItem _ pd) = pd
-
-data Media = Media [Identifier] [RuleSet] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Media where
-  parseData (Media _ _ pd) = pd
-
-data RuleSet = RuleSet [Selector] [Declaration] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode RuleSet where
-  parseData (RuleSet _ _ pd) = pd
-
-data Selector = Selector [SelectorPart] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Selector where
-  parseData (Selector _ pd) = pd
-
-data SelectorPart =   NearestChildSelectorPart NearestChildSelector ParseData
-                    | SiblingSelectorPart SiblingSelector ParseData
-                    | SimpleSelectorPart SimpleSelector ParseData
-  deriving (Eq, Show)
-
-instance ParseNode SelectorPart where
-  parseData (NearestChildSelectorPart _ pd) = pd
-  parseData (SiblingSelectorPart _ pd) = pd
-  parseData (SimpleSelectorPart _ pd) = pd
-
-data NearestChildSelector = NearestChildSelector [SelTerm] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode NearestChildSelector where
-  parseData (NearestChildSelector _ pd) = pd
-
-data SiblingSelector = SiblingSelector [SelTerm] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode SiblingSelector where
-  parseData (SiblingSelector _ pd) = pd
-
-data SimpleSelector = SimpleSelector [SelTerm] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode SimpleSelector where
-  parseData (SimpleSelector _ pd) = pd
-
-data SelTerm =   ElementSelTerm Element ParseData
-               | IdSelTerm Id ParseData
-               | ClassSelTerm Class ParseData
-               | PseudoElementSelTerm PseudoElement ParseData
-               | AttributeSelTerm Attribute ParseData
-  deriving (Eq, Show)
-
-instance ParseNode SelTerm where
-  parseData (ElementSelTerm _ pd) = pd
-  parseData (IdSelTerm _ pd) = pd
-  parseData (ClassSelTerm _ pd) = pd
-  parseData (PseudoElementSelTerm _ pd) = pd
-  parseData (AttributeSelTerm _ pd) = pd
-
-data Element =   NameElement Name ParseData
-               | WildcardElement Wildcard ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Element where
-  parseData (NameElement _ pd) = pd
-  parseData (WildcardElement _ pd) = pd
-
-data Name = Name Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Name where
-  parseData (Name _ pd) = pd
-
-data Wildcard = Wildcard ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Wildcard where
-  parseData (Wildcard pd) = pd
-
-data Id = Id Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Id where
-  parseData (Id _ pd) = pd
-
-data Class = Class Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Class where
-  parseData (Class _ pd) = pd
-
-data PseudoElement = PseudoElement Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode PseudoElement where
-  parseData (PseudoElement _ pd) = pd
-
-data Attribute =   AttributeHas HasMatcher ParseData
-                 | AttributeEquals EqualsMatcher ParseData
-                 | AttributeIncludes IncludesMatcher ParseData
-                 | AttributeLike LikeMatcher ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Attribute where
-  parseData (AttributeHas _ pd) = pd
-  parseData (AttributeEquals _ pd) = pd
-  parseData (AttributeIncludes _ pd) = pd
-  parseData (AttributeLike _ pd) = pd
-
-data HasMatcher = HasMatcher Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode HasMatcher where
-  parseData (HasMatcher _ pd) = pd
-
-data EqualsMatcher = EqualsMatcher Identifier StringLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode EqualsMatcher where
-  parseData (EqualsMatcher _ _ pd) = pd
-
-data IncludesMatcher = IncludesMatcher Identifier StringLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode IncludesMatcher where
-  parseData (IncludesMatcher _ _ pd) = pd
-
-data LikeMatcher = LikeMatcher Identifier StringLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode LikeMatcher where
-  parseData (LikeMatcher _ _ pd) = pd
-
-data Declaration = Declaration (Maybe DeclarationHack)
-                               Property
-                               Expression
-                               Priority
-                               ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Declaration where
-  parseData (Declaration _ _ _ _ pd) = pd
-
-data DeclarationHack =   AsterixDeclarationHack AsterixHack ParseData
-                       | HashDeclarationHack HashHack ParseData
-                       | UnderscoreDeclarationHack UnderscoreHack ParseData
-  deriving (Eq, Show)
-
-instance ParseNode DeclarationHack where
-  parseData (AsterixDeclarationHack _ pd) = pd
-  parseData (HashDeclarationHack _ pd) = pd
-  parseData (UnderscoreDeclarationHack _ pd) = pd
-
-data AsterixHack = AsterixHack ParseData
-  deriving (Eq, Show)
-
-instance ParseNode AsterixHack where
-  parseData (AsterixHack pd) = pd
-
-data HashHack = HashHack ParseData
-  deriving (Eq, Show)
-
-instance ParseNode HashHack where
-  parseData (HashHack pd) = pd
-
-data UnderscoreHack = UnderscoreHack ParseData
-  deriving (Eq, Show)
-
-instance ParseNode UnderscoreHack where
-  parseData (UnderscoreHack pd) = pd
-
-data Property = Property Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Property where
-  parseData (Property _ pd) = pd
-
-data Priority =   ImportantPriority Important ParseData
-                | NormalPriority ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Priority where
-  parseData (ImportantPriority _ pd) = pd
-  parseData (NormalPriority pd) = pd
-
-data Important = Important ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Important where
-  parseData (Important pd) = pd
-
-data Expression = Expression [Term] ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Expression where
-  parseData (Expression _ pd) = pd
-
-data Term =   HexcolorLiteralTerm HexcolorLiteral ParseData
-            | MeasureTerm Measure ParseData
-            | StringLiteralTerm StringLiteral ParseData
-            | URITerm URI ParseData
-            | OpacityHackTerm OpacityHack ParseData
-            | FunctionTerm Function ParseData
-            | IdentifierTerm Identifier ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Term where
-  parseData (HexcolorLiteralTerm _ pd) = pd
-  parseData (MeasureTerm _ pd) = pd
-  parseData (StringLiteralTerm _ pd) = pd
-  parseData (URITerm _ pd) = pd
-  parseData (OpacityHackTerm _ pd) = pd
-  parseData (FunctionTerm _ pd) = pd
-  parseData (IdentifierTerm _ pd) = pd
-
-data Measure =   PercentageMeasure Percentage ParseData
-               | CentimeterMeasure Centimeter ParseData
-               | InchMeasure Inch ParseData
-               | DegreeMeasure Degree ParseData
-               | RadianMeasure Radian ParseData
-               | GradMeasure Grad ParseData
-               | SecondMeasure Second ParseData
-               | HertzMeasure Hertz ParseData
-               | KilohertzMeasure Kilohertz ParseData
-               | EmsMeasure Ems ParseData
-               | ExsMeasure Exs ParseData
-               | MillimeterMeasure Millimeter ParseData
-               | MillisecondMeasure Millisecond ParseData
-               | PixelMeasure Pixel ParseData
-               | PointMeasure Point ParseData
-               | PicaMeasure Pica ParseData
-               | NumberOnlyMeasure NumberOnly ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Measure where
-  parseData (PercentageMeasure _ pd) = pd
-  parseData (CentimeterMeasure _ pd) = pd
-  parseData (InchMeasure _ pd) = pd
-  parseData (DegreeMeasure _ pd) = pd
-  parseData (RadianMeasure _ pd) = pd
-  parseData (GradMeasure _ pd) = pd
-  parseData (SecondMeasure _ pd) = pd
-  parseData (HertzMeasure _ pd) = pd
-  parseData (KilohertzMeasure _ pd) = pd
-  parseData (EmsMeasure _ pd) = pd
-  parseData (ExsMeasure _ pd) = pd
-  parseData (MillimeterMeasure _ pd) = pd
-  parseData (MillisecondMeasure _ pd) = pd
-  parseData (PixelMeasure _ pd) = pd
-  parseData (PointMeasure _ pd) = pd
-  parseData (PicaMeasure _ pd) = pd
-  parseData (NumberOnlyMeasure _ pd) = pd
-
-data Function = Function Identifier Expression ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Function where
-  parseData (Function _ _ pd) = pd
-
-data Percentage = Percentage NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Percentage where
-  parseData (Percentage _ pd) = pd
-
-data Centimeter = Centimeter NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Centimeter where
-  parseData (Centimeter _ pd) = pd
-
-data Inch = Inch NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Inch where
-  parseData (Inch _ pd) = pd
-
-data Degree = Degree NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Degree where
-  parseData (Degree _ pd) = pd
-
-data Radian = Radian NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Radian where
-  parseData (Radian _ pd) = pd
-
-data Grad = Grad NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Grad where
-  parseData (Grad _ pd) = pd
-
-data Second = Second NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Second where
-  parseData (Second _ pd) = pd
-
-data Hertz = Hertz NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Hertz where
-  parseData (Hertz _ pd) = pd
-
-data Kilohertz = Kilohertz NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Kilohertz where
-  parseData (Kilohertz _ pd) = pd
-
-data Ems = Ems NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Ems where
-  parseData (Ems _ pd) = pd
-
-data Exs = Exs NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Exs where
-  parseData (Exs _ pd) = pd
-
-data Millimeter = Millimeter NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Millimeter where
-  parseData (Millimeter _ pd) = pd
-
-data Millisecond = Millisecond NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Millisecond where
-  parseData (Millisecond _ pd) = pd
-
-data Pixel = Pixel NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Pixel where
-  parseData (Pixel _ pd) = pd
-
-data Point = Point NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Point where
-  parseData (Point _ pd) = pd
-
-data Pica = Pica NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Pica where
-  parseData (Pica _ pd) = pd
-
-data NumberOnly = NumberOnly NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode NumberOnly where
-  parseData (NumberOnly _ pd) = pd
-
-data URI = URI StringLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode URI where
-  parseData (URI _ pd) = pd
-
-data OpacityHack = OpacityHack NumberLiteral ParseData
-  deriving (Eq, Show)
-
-instance ParseNode OpacityHack where
-  parseData (OpacityHack _ pd) = pd
-
-data Identifier = Identifier String ParseData
-  deriving (Eq, Show)
-
-instance ParseNode Identifier where
-  parseData (Identifier _ pd) = pd
-
-data StringLiteral = StringLiteral String ParseData
-  deriving (Eq, Show)
-
-instance ParseNode StringLiteral where
-  parseData (StringLiteral _ pd) = pd
-
-data HexcolorLiteral = HexcolorLiteral Integer Integer Integer ParseData
-  deriving (Eq, Show)
-
-instance ParseNode HexcolorLiteral where
-  parseData (HexcolorLiteral _ _ _ pd) = pd
-
-data NumberLiteral = NumberLiteral Double ParseData
-  deriving (Eq, Show)
-
-instance ParseNode NumberLiteral where
-  parseData (NumberLiteral _ pd) = pd
+import CSS.Model
 
 parseCSSFile :: FilePath -> IO (Either ParseError Stylesheet)
 parseCSSFile file = do
@@ -459,7 +73,7 @@ stylesheet = withParseData $ do
 charset :: GenParser Char st CharSet
 charset = withParseData (do
   _ <- lexeme lexer $ stringIgnoreCase "@charset "
-  cs <- CSSParser.stringLiteral
+  cs <- CSS.Parser.stringLiteral
   _ <- semi lexer
   return $ CharSet cs) <?> "@charset"
 
@@ -537,7 +151,7 @@ anySelTerm =
 
 nonElementSelTerm :: GenParser Char st SelTerm
 nonElementSelTerm = withParseData $ choice [
-    IdSelTerm <$> CSSParser.id
+    IdSelTerm <$> CSS.Parser.id
   , ClassSelTerm <$> clazz
   , PseudoElementSelTerm <$> pseudoElement
   , AttributeSelTerm <$> attribute
@@ -579,17 +193,17 @@ attribute = withParseData (brackets lexer $ choice
     likeMatcher = withParseData $ do
       att <- lexemedIdentifier
       _ <- lexeme lexer $ string "|="
-      val <- CSSParser.stringLiteral
+      val <- CSS.Parser.stringLiteral
       return $ LikeMatcher att val
     includesMatcher = withParseData $ do
       att <- lexemedIdentifier
       _ <- lexeme lexer $ string "~="
-      val <- CSSParser.stringLiteral
+      val <- CSS.Parser.stringLiteral
       return $ IncludesMatcher att val
     equalsMatcher = withParseData $ do
       att <- lexemedIdentifier
       _ <- lexeme lexer $ char '='
-      val <- CSSParser.stringLiteral
+      val <- CSS.Parser.stringLiteral
       return $ EqualsMatcher att val
     hasMatcher = withParseData $
       HasMatcher <$> lexemedIdentifier
@@ -662,7 +276,7 @@ term :: GenParser Char st Term
 term = withParseData (choice
   [ HexcolorLiteralTerm <$> hexcolorLiteral
   , MeasureTerm <$> measure
-  , StringLiteralTerm <$> CSSParser.stringLiteral
+  , StringLiteralTerm <$> CSS.Parser.stringLiteral
   , try (URITerm <$> uri)
       <|> (try (OpacityHackTerm <$> opacityHack)
       <|> (try (FunctionTerm <$> function)
@@ -718,7 +332,7 @@ uri = withParseData (URI <$> do
   _ <- stringIgnoreCase "url"
   parens lexer url) <?> "uri"
   where
-    url = CSSParser.stringLiteral <|> unquotedString
+    url = CSS.Parser.stringLiteral <|> unquotedString
     unquotedString =
       lexemeWithParseData (StringLiteral <$> manyTill anyChar ending) <?> ""
     ending = lookAhead $ do

@@ -2,9 +2,10 @@
 
 module Main where
 
-import CSS.Model
 import CSS.Parser
 import Hints.Model
+import Report.Raw
+import Report.Text
 import qualified Hints.Pseudo as Pseudo
 
 allHints :: [Hint]
@@ -17,14 +18,9 @@ runHintsForFile fp = do
     Left msg -> do
       print msg
       return ()
-    Right ss -> mapM_ (runHint ss) allHints
-
-runHint :: Stylesheet -> Hint -> IO ()
-runHint ss Hint{explanation, findInstances} =
-  case findInstances ss of
-    [] -> return ()
-    instances -> do
-      putStrLn explanation
-      putStrLn $ show (length instances) ++ " problems found"
-      print instances
+    Right ss -> do
+      csscontents <- readFile fp
+      let rawreport = createRawReport ss allHints
+          textreport = createTextReport csscontents rawreport
+      putStrLn textreport
       return ()

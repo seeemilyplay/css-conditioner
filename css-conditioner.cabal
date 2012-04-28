@@ -14,5 +14,5 @@ library
   build-depends: HUnit >= 1.2 && < 2
   hs-source-dirs: src
   ghc-options: -fwarn-tabs -fwarn-unused-do-bind -fwarn-incomplete-record-updates -Wall -Werror
-  exposed-modules: CSS.Model CSS.ParseNode CSS.Parser CSS.Search Hints.Model Hints.Pseudo Main
+  exposed-modules: CSS.Model CSS.ParseNode CSS.Parser CSS.Search Hints.Model Hints.Pseudo Report.Raw Report.Text Main
   Extensions: MultiParamTypeClasses NamedFieldPuns

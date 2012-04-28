@@ -4,12 +4,24 @@ module Hints.Model (
 
 import CSS.Model
 
-data HintCategory =   IE6
+data HintCategory =   IE
                     | IE7
+                    | IE8
+                    | IE9
+                    | IE10
+                    | Firefox
+                    | Safari
+                    | Chrome
+                    | Opera
+                    | Dynamic
+                    | CSS2_1
+                    | CSS3
   deriving (Eq, Show)
 
 data Hint = Hint {
-    categories :: [HintCategory]
+    label :: String
+  , categories :: [HintCategory]
   , explanation :: String
+  , references :: [String]
   , findInstances :: Stylesheet -> [ParseData]
 }

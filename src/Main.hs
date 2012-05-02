@@ -2,27 +2,37 @@
 
 module Main where
 
+import Control.Applicative ((<$>))
 import Data.Either
 import System.Environment
 import System.Exit
 import System.FilePath.Glob
 
+import ArgsParser
 import CSS.Parser
+import Hints.List
 import Hints.Model
 import Report.Raw
 import Report.Text
-import qualified Hints.Pseudo as Pseudo
-
-allHints :: [Hint]
-allHints = Pseudo.hints
 
 main :: IO ()
 main = do
   args <- getArgs
-  case args of
-    g : [] -> do
-      files <- glob g
-      results <- mapM processFile files
+  case parseArguments args of
+    (Left err) -> do
+      print err
+      exitFailure
+    (Right Arguments{helpWanted}) | helpWanted -> do
+      putStrLn "Usage: css-conditioner filepath"
+      exitSuccess
+    (Right Arguments{
+             includedCategories,
+             excludedCategories,
+             inputFiles}) -> do
+      files <- concat <$> mapM glob inputFiles
+      let hints = getHints includedCategories excludedCategories
+      putStrLn $ "\nRunning for " ++ show (length files) ++ " files and " ++ show (length hints) ++ " hints..."
+      results <- mapM (processFile hints) files
       let total = sum (rights results) + length (lefts results)
       if total < 1
         then do
@@ -31,12 +41,9 @@ main = do
         else do
           putStrLn $ show total ++ " problems found"
           exitFailure
-    _ -> do
-      putStrLn "Expected use: css-conditioner \"file\""
-      exitFailure
   where
-    processFile :: FilePath -> IO (Either () Int)
-    processFile fp = do
+    processFile :: [Hint] -> FilePath -> IO (Either () Int)
+    processFile hints fp = do
       ess <- parseCSSFile fp
       case ess of
         Left msg -> do
@@ -44,7 +51,7 @@ main = do
           return $ Left ()
         Right ss -> do
           csscontents <- readFile fp
-          let rawreport = createRawReport ss allHints
+          let rawreport = createRawReport ss hints
               textreport = createTextReport csscontents rawreport
           putStrLn textreport
           return $ Right (length rawreport)

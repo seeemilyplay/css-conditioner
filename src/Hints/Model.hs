@@ -16,7 +16,7 @@ data HintCategory =   IE
                     | Dynamic
                     | CSS2_1
                     | CSS3
-  deriving (Eq, Show)
+  deriving (Eq, Show, Read)
 
 data Hint = Hint {
     label :: String

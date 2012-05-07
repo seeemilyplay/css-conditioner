@@ -2,6 +2,7 @@ module Hints.List (getHints) where
 
 import Hints.Model
 import qualified Hints.Pseudo as Pseudo
+import qualified Hints.Speed as Speed
 
 getHints :: [HintCategory] -> [HintCategory] -> [Hint]
 getHints includecats excludecats =
@@ -31,6 +32,8 @@ excludeCategory Chrome cs = remove [Chrome] cs
 excludeCategory Opera cs = remove [Opera] cs
 excludeCategory Dynamic cs | Dynamic `elem` cs = []
 excludeCategory Dynamic cs = cs
+excludeCategory Speed cs | Speed `elem` cs = []
+excludeCategory Speed cs = cs
 excludeCategory CSS2_1 cs | CSS2_1 `elem` cs = []
 excludeCategory CSS2_1 cs = cs
 excludeCategory CSS3 cs | CSS3 `elem` cs = []
@@ -45,4 +48,4 @@ includedHints includedcats =
   filter (any (`elem` includedcats) . categories) allHints
 
 allHints :: [Hint]
-allHints = Pseudo.hints
+allHints = Pseudo.hints ++ Speed.hints

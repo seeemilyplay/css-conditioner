@@ -6,6 +6,9 @@
     missing stuff:  correct char handling (escape & non-ascii chars)
                     stuff that can go at the top of your stylesheet
                     @font-face stuff (not in spec but hey)
+                    attributes expect string literals
+                    double :: from css3
+                    and for css3
 -}
 module CSS.Parser (
     parseCSSFile
@@ -183,12 +186,11 @@ pseudoElement = withParseData (do
   PseudoElement <$> unlexemedIdentifier) <?> ":pseudo-element"
 
 attribute :: GenParser Char st Attribute
-attribute = withParseData (brackets lexer $ choice
-  [ AttributeLike <$> likeMatcher
-  , AttributeIncludes <$> includesMatcher
-  , AttributeEquals <$> equalsMatcher
-  , AttributeHas <$> hasMatcher
-  ]) <?> "[attribute]"
+attribute = withParseData (brackets lexer $
+  try (AttributeLike <$> likeMatcher)
+      <|> (try (AttributeIncludes <$> includesMatcher)
+      <|> (try (AttributeEquals <$> equalsMatcher)
+      <|> (AttributeHas <$> hasMatcher)))) <?> "[attribute]"
   where
     likeMatcher = withParseData $ do
       att <- lexemedIdentifier

@@ -8,8 +8,10 @@ import CSS.Model
 import Hints.Model
 
 data ReportItem = ReportItem {
-    categories :: [HintCategory]
+    label :: String
+  , categories :: [HintCategory]
   , explanation :: String
+  , references :: [String]
   , parseData :: ParseData
 }
 
@@ -21,7 +23,9 @@ createRawReport ss hints = concatMap forHint hints
       map toItem $ findInstances hint ss
       where
         toItem parseData = ReportItem {
-          Report.Raw.categories = Hints.Model.categories hint
+          Report.Raw.label = Hints.Model.label hint
+        , Report.Raw.categories = Hints.Model.categories hint
         , Report.Raw.explanation = Hints.Model.explanation hint
+        , Report.Raw.references = Hints.Model.references hint
         , Report.Raw.parseData = parseData
         }

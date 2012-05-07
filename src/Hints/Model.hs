@@ -14,6 +14,7 @@ data HintCategory =   IE
                     | Chrome
                     | Opera
                     | Dynamic
+                    | Speed
                     | CSS2_1
                     | CSS3
   deriving (Eq, Show, Read)
@@ -24,4 +25,5 @@ data Hint = Hint {
   , explanation :: String
   , references :: [String]
   , findInstances :: Stylesheet -> [ParseData]
+  , maybeFixInstance :: Maybe (Stylesheet -> String -> ParseData -> String)
 }

@@ -6,7 +6,7 @@ module Report.Text (
 import Data.List
 import Data.Ord
 import System.FilePath
-import Text.Parsec
+import Text.Parsec hiding (label)
 
 import CSS.Model
 import Report.Raw
@@ -15,11 +15,11 @@ createTextReport :: String -> [ReportItem] -> String
 createTextReport original items =
   unlines . map formatItem $ sortBy positionOrdering items
   where
-    formatItem ReportItem{categories, explanation, parseData} =
+    formatItem ReportItem{label, categories, explanation, parseData} =
       "\n" ++ explanation ++ "\n"
         ++ formatLine parseData ++ "\n"
-        ++ formatCategories categories
-    formatCategories cats = "Categories: " ++ show cats
+        ++ formatCategories label categories
+    formatCategories lbl cats = "name: " ++ lbl ++ " categories: " ++ show cats
     formatLine (ParseData pos _) =
       let name = sourceName pos
           line = sourceLine pos

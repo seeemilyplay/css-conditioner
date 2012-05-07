@@ -31,7 +31,7 @@ main = do
              inputFiles}) -> do
       files <- concat <$> mapM glob inputFiles
       let hints = getHints includedCategories excludedCategories
-      putStrLn $ "\nRunning for " ++ show (length files) ++ " files and " ++ show (length hints) ++ " hints..."
+      putStrLn $ "Running for " ++ show (length files) ++ " files and " ++ show (length hints) ++ " hints..."
       results <- mapM (processFile hints) files
       let total = sum (rights results) + length (lefts results)
       if total < 1
@@ -53,5 +53,7 @@ main = do
           csscontents <- readFile fp
           let rawreport = createRawReport ss hints
               textreport = createTextReport csscontents rawreport
-          putStrLn textreport
+          if (not $ null textreport)
+            then putStrLn textreport
+            else return ()
           return $ Right (length rawreport)

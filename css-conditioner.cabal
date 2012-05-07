@@ -17,4 +17,4 @@ Executable css-conditioner
   hs-source-dirs: src
   ghc-options: -fwarn-tabs -fwarn-unused-do-bind -fwarn-incomplete-record-updates -Wall -Werror
   Main-is: Main.hs
-  Extensions: MultiParamTypeClasses NamedFieldPuns
+  Extensions: MultiParamTypeClasses NamedFieldPuns FlexibleInstances
